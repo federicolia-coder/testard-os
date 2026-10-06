@@ -255,6 +255,11 @@ cat > /etc/motd <<EOF
 
 EOF
 rm -f /etc/profile.d/testard-live.sh
+cat > /etc/issue <<'EOF'
+
+Testard OS (Alpine Linux) \r on \m (\l)
+
+EOF
 
 ERASE_DISKS="/dev/$DISK" setup-disk -m sys "/dev/$DISK" >> /var/log/testard-install.log 2>&1 \
 	|| die "couldn't install to $DISK (see /var/log/testard-install.log)"

@@ -111,6 +111,15 @@ while time.time() < deadline:
     time.sleep(10)
 print(log)
 if "first boot setup finished" not in log:
+    step("Diagnostics over the serial console")
+    vm.sendline(USER)
+    vm.expect_exact("Password:")
+    vm.sendline(PASSWORD)
+    vm.expect_exact(":~$ ")
+    vm.sendline("su -c 'cat /var/log/testard-firstboot.log; tail -n 30 /var/log/testard-setup.log; rc-status; ls -la /etc/local.d /etc/runlevels/default; cat /etc/apk/repositories; ip addr' root || "
+                f"echo {PASSWORD} | sudo -S sh -c 'cat /var/log/testard-firstboot.log; rc-status; ls -la /etc/local.d /etc/runlevels/default'")
+    time.sleep(15)
+    vm.expect([pexpect.TIMEOUT], timeout=5)
     sys.exit("first-boot setup didn't finish")
 
 step("Check the installed system")
