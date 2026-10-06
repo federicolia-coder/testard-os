@@ -35,8 +35,8 @@ if [ ! -d /tmp/aports ]; then
 fi
 
 mkdir -p ~/.mkimage out
-cp iso/mkimg.testard.sh iso/genapkovl-testard.sh ~/.mkimage/
-chmod +x ~/.mkimage/genapkovl-testard.sh
+cp iso/mkimg.testard.sh ~/.mkimage/
+chmod +x iso/genapkovl-testard.sh
 
 export TESTARD_OS_DIR="$PWD"
 sh /tmp/aports/scripts/mkimage.sh \

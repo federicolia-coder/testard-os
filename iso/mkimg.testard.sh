@@ -18,6 +18,7 @@ profile_testard() {
 	apks="$apks nftables sudo curl ca-certificates tzdata openssh chrony
 		docker docker-cli-compose
 		e2fsprogs dosfstools sfdisk grub grub-efi efibootmgr syslinux"
-	apkovl="genapkovl-testard.sh"
+	# Relative to the repository root, where iso/build.sh runs mkimage.
+	apkovl="iso/genapkovl-testard.sh"
 	hostname="testard"
 }
