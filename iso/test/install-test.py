@@ -215,8 +215,9 @@ if "first boot setup finished" not in log:
     vm.expect_exact("Password:")
     vm.sendline(PASSWORD)
     vm.expect_exact(":~$ ")
-    vm.sendline("cat /var/log/testard-firstboot.log; rc-status; ls -la /etc/local.d /etc/runlevels/default; "
-                "cat /etc/apk/repositories; ip -4 addr; tail -n 40 /var/log/messages")
+    vm.sendline(f"echo {PASSWORD} | sudo -S -p '' sh -c 'tail -n 30 /var/log/testard-firstboot.log; rc-status -a; "
+                "rc-service cgroups start; mount | grep -i cgroup; grep -i cgroup /etc/rc.conf | grep -v \"^#\"; "
+                "ls /etc/runlevels/*; cat /etc/apk/world; dmesg | tail -n 20'")
     vm.expect([pexpect.TIMEOUT], timeout=20)
     sys.exit("first-boot setup didn't finish")
 
