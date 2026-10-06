@@ -48,15 +48,17 @@ jobs:
         timeout-minutes: 30
         run: python3 iso/test/install-test.py out/testard-os-*.iso --uefi --gui
 
-      - name: Publish screenshots
-        if: always()
+      - name: Publish the test build
+        if: always() && github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          ls out/screens/*.png >/dev/null 2>&1 || exit 0
-          gh release view ci-screenshots >/dev/null 2>&1 || \
-            gh release create ci-screenshots --prerelease --title "CI screenshots" --notes "Screens from the latest ISO test run."
-          gh release upload ci-screenshots out/screens/*.png --clobber
+          ls out/testard-os-*.iso >/dev/null 2>&1 || exit 0
+          gh release view ci-latest >/dev/null 2>&1 || \
+            gh release create ci-latest --prerelease --title "Latest test build" \
+              --notes "The ISO and screenshots from the latest CI run on main. Not a release: use the latest numbered version."
+          cp out/testard-os-*.iso out/testard-os-latest-x86_64.iso
+          gh release upload ci-latest out/testard-os-latest-x86_64.iso $(ls out/screens/*.png 2>/dev/null) --clobber
 
       - uses: actions/upload-artifact@v5
         with:
