@@ -19,7 +19,7 @@ profile_testard() {
 		docker docker-cli-compose avahi dbus
 		e2fsprogs dosfstools sfdisk grub grub-efi efibootmgr syslinux
 		eudev udev-init-scripts udev-init-scripts-openrc
-		busybox-extras cage cog seatd seatd-launch mesa-dri-gallium
+		busybox-extras cage firefox-esr seatd seatd-launch mesa-dri-gallium
 		xkeyboard-config font-dejavu"
 	# Relative to the repository root, where iso/build.sh runs mkimage.
 	apkovl="iso/genapkovl-testard.sh"

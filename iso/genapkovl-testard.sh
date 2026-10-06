@@ -47,7 +47,7 @@ udev-init-scripts
 udev-init-scripts-openrc
 busybox-extras
 cage
-cog
+firefox-esr
 seatd
 seatd-launch
 mesa-dri-gallium
@@ -108,6 +108,31 @@ cp -R "$SRC/iso/installer/." "$tmp/etc/testard/installer/"
 chown -R root:root "$tmp/etc/testard/installer"
 chmod -R u=rwX,go=rX "$tmp/etc/testard/installer"
 chmod 0755 "$tmp/etc/testard/installer/cgi-bin/"*
+# Firefox as a kiosk for the installer page: no first-run pages, no
+# telemetry, no updates. Removed again before installing to disk.
+mkdir -p "$tmp/etc/firefox/policies"
+makefile root:root 0644 "$tmp/etc/firefox/policies/policies.json" <<'EOF'
+{
+  "policies": {
+    "DisableAppUpdate": true,
+    "DisableTelemetry": true,
+    "DisableFirefoxStudies": true,
+    "DisablePocket": true,
+    "DontCheckDefaultBrowser": true,
+    "NoDefaultBookmarks": true,
+    "OverrideFirstRunPage": "",
+    "OverridePostUpdatePage": "",
+    "UserMessaging": { "WhatsNew": false, "ExtensionRecommendations": false, "FeatureRecommendations": false, "SkipOnboarding": true, "MoreFromMozilla": false },
+    "Preferences": {
+      "browser.aboutwelcome.enabled": { "Value": false, "Status": "locked" },
+      "datareporting.policy.dataSubmissionPolicyBypassNotification": { "Value": true, "Status": "locked" },
+      "browser.sessionstore.resume_from_crash": { "Value": false, "Status": "locked" },
+      "browser.translations.automaticallyPopup": { "Value": false, "Status": "locked" }
+    }
+  }
+}
+EOF
+
 makefile root:root 0644 "$tmp/etc/profile.d/testard-live.sh" <<'EOF'
 # Testard OS live system: make the installer a plain command, and start the
 # graphical installer on the screen.

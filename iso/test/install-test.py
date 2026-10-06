@@ -132,7 +132,7 @@ if GUI:
         sys.exit("the graphical installer's backend didn't start")
     time.sleep(20)  # let cage and cog draw the page
     colors = screenshot("welcome")
-    vm.sendline("cat /run/testard/gui.log | tail -n 20; pgrep -l cage; pgrep -l cog")
+    vm.sendline("cat /run/testard/gui.log | tail -n 20; pgrep -l cage; pgrep -l firefox")
     vm.expect_exact(":~# ")
     if colors < 4:
         sys.exit("the graphical installer didn't show anything on the screen")

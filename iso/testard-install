@@ -353,7 +353,7 @@ cat > /etc/motd <<EOF
   Testard OS is finishing its setup (log: /var/log/testard-firstboot.log).
 
 EOF
-rm -rf /etc/profile.d/testard-live.sh /etc/testard/live-login /etc/testard/installer /etc/testard/testard-gui
+rm -rf /etc/profile.d/testard-live.sh /etc/testard/live-login /etc/testard/installer /etc/testard/testard-gui /etc/firefox
 sed -i 's#^tty1::respawn:.*#tty1::respawn:/sbin/getty 38400 tty1#' /etc/inittab
 printf '\033[H\033[2J\nTestard OS (Alpine Linux) \\r on \\m (\\l)\n\n' > /etc/issue
 
