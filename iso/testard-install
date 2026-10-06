@@ -1,0 +1,253 @@
+#!/bin/sh
+# Testard OS installer: installs the live system onto this machine's disk.
+#
+# It asks a few questions, sets up the live system with Alpine's own tools
+# (setup-alpine, setup-disk), copies it to the disk, and leaves the rest of
+# the setup (SSH, firewall, updates, agent) to testard-setup on first boot.
+
+set -eu
+
+[ "$(id -u)" -eq 0 ] || { echo "Run testard-install as root." >&2; exit 1; }
+
+B=$(printf '\033[1m'); BLUE=$(printf '\033[1;34m'); DIM=$(printf '\033[2m'); R=$(printf '\033[0m')
+FIRSTBOOT=/etc/testard/firstboot
+
+ask() { # ask VAR "Question" "default"
+	printf '%s%s%s%s: ' "$B" "$2" "$R" "${3:+ [$3]}"
+	IFS= read -r _ans || _ans=""
+	[ -n "$_ans" ] || _ans="$3"
+	eval "$1=\$_ans"
+}
+
+die() { printf '\n%sThe installation stopped:%s %s\n' "$B" "$R" "$*" >&2; exit 1; }
+say() { printf '%s\n' "$*"; }
+
+printf '\n%stestard%s.%s OS installer\n' "$B" "$BLUE" "$R"
+say "${DIM}Press Enter to accept the value in brackets. Ctrl+C stops without changing anything.${R}"
+echo
+
+# ── Keyboard first, so the rest is typed right ───────────────────────────
+
+ask KB "Keyboard layout (us, it, de, fr, es, gb…)" "us"
+case "$KB" in
+	gb|uk) KB="gb"; KBV="gb" ;;
+	*) KBV="$KB" ;;
+esac
+setup-keymap "$KB" "$KBV" >/dev/null 2>&1 || { say "Unknown layout, using us."; KB=us; KBV=us; setup-keymap us us >/dev/null 2>&1 || true; }
+
+# ── Questions ────────────────────────────────────────────────────────────
+
+while :; do
+	ask HOST "Server name" "homelab"
+	printf '%s' "$HOST" | grep -Eq '^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$' && break
+	say "Use lower case letters, digits and dashes, e.g. homelab-1."
+done
+
+while :; do
+	ask TZ_NAME "Time zone" "Europe/Rome"
+	[ -f "/usr/share/zoneinfo/$TZ_NAME" ] && break
+	say "Unknown time zone. Examples: Europe/Rome, Europe/London, America/New_York, UTC."
+done
+
+while :; do
+	ask ADMIN "Your user name (you'll log in with it; root login is turned off)" ""
+	printf '%s' "$ADMIN" | grep -Eq '^[a-z_][a-z0-9_-]{0,31}$' && [ "$ADMIN" != root ] && break
+	say "Use lower case letters, digits, - or _, e.g. mario."
+done
+
+while :; do
+	stty -echo 2>/dev/null || true
+	printf '%sPassword for %s%s: ' "$B" "$ADMIN" "$R"; IFS= read -r PW1 || PW1=""; echo
+	printf '%sSame password again%s: ' "$B" "$R"; IFS= read -r PW2 || PW2=""; echo
+	stty echo 2>/dev/null || true
+	if [ "${#PW1}" -lt 8 ]; then say "At least 8 characters, please."
+	elif [ "$PW1" != "$PW2" ]; then say "The two passwords don't match."
+	else break; fi
+done
+
+say ""
+say "${DIM}SSH keys let you log in from another computer without a password.${R}"
+ask GITHUB "GitHub username to take your SSH keys from (empty to skip)" ""
+SSH_KEY=""
+if [ -z "$GITHUB" ]; then
+	ask SSH_KEY "Or paste a public SSH key, e.g. ssh-ed25519 AAAA… (empty to skip)" ""
+fi
+
+while :; do
+	ask CONTAINERS "Container engine: docker or none" "docker"
+	case "$CONTAINERS" in docker|none) break ;; esac
+done
+
+ask OPEN_PORTS "Ports to open besides SSH, e.g. 80,443 (none for none)" "none"
+[ "$OPEN_PORTS" != none ] || OPEN_PORTS=""
+
+say ""
+say "${DIM}To see this server in Testard: Cloud Providers → Connect provider → Any server, then copy the key.${R}"
+stty -echo 2>/dev/null || true
+printf '%sTestard agent key, tsk_… (empty to skip)%s: ' "$B" "$R"; IFS= read -r AGENT_KEY || AGENT_KEY=""; echo
+stty echo 2>/dev/null || true
+if [ -n "$AGENT_KEY" ] && ! printf '%s' "$AGENT_KEY" | grep -Eq '^tsk_[A-Za-z0-9_-]{43}$'; then
+	say "That isn't an agent key, skipping it. You can add one later: sudo testard-setup --agent-key tsk_…"
+	AGENT_KEY=""
+fi
+
+# ── Disk ─────────────────────────────────────────────────────────────────
+
+# The USB stick we booted from: the device holding the package repository.
+boot_dev=$(awk '$2 ~ /^\/media\// {print $1}' /proc/mounts | while read -r d; do
+	m=$(awk -v d="$d" '$1==d {print $2; exit}' /proc/mounts)
+	[ -d "$m/apks" ] && basename "$d"
+done | head -n 1)
+boot_disk=$(printf '%s' "$boot_dev" | sed -E 's/p?[0-9]+$//')
+
+disks=""
+for d in /sys/block/*; do
+	n=$(basename "$d")
+	case "$n" in loop*|ram*|sr*|zram*|dm-*|md*|fd*) continue ;; esac
+	[ "$n" = "$boot_disk" ] && continue
+	[ "$(cat "$d/size")" -gt 0 ] || continue
+	disks="$disks $n"
+done
+disks=${disks# }
+[ -n "$disks" ] || die "no disk found to install on (the USB stick itself can't be used)."
+
+echo
+say "${B}Disks${R}"
+for n in $disks; do
+	gb=$(awk '{printf "%.0f", $1 * 512 / 1000000000}' "/sys/block/$n/size")
+	model=$(tr -s ' ' < "/sys/block/$n/device/model" 2>/dev/null || true)
+	say "  $n   $gb GB   $model"
+done
+# shellcheck disable=SC2086 # split the list into words on purpose
+set -- $disks
+while :; do
+	ask DISK "Disk to install on" "$1"
+	DISK=${DISK#/dev/}
+	case " $disks " in *" $DISK "*) break ;; esac
+	say "Pick one of: $disks"
+done
+
+echo
+say "${B}Everything on $DISK will be erased.${R} Testard OS will be installed there, named $HOST, for $ADMIN."
+ask CONFIRM "Type the disk name ($DISK) to go ahead" ""
+[ "$CONFIRM" = "$DISK" ] || { say "Nothing changed."; exit 0; }
+
+# ── Configure the live system, then copy it to the disk ──────────────────
+
+echo
+say "${B}Installing…${R} ${DIM}(this takes a few minutes)${R}"
+
+release=$(cut -d. -f1,2 /etc/alpine-release)
+answers=$(mktemp)
+cat > "$answers" <<EOF
+KEYMAPOPTS="$KB $KBV"
+HOSTNAMEOPTS="$HOST"
+DEVDOPTS=mdev
+INTERFACESOPTS="auto lo
+iface lo inet loopback
+
+auto eth0
+iface eth0 inet dhcp
+"
+DNSOPTS=none
+TIMEZONEOPTS="$TZ_NAME"
+PROXYOPTS=none
+APKREPOSOPTS="-c https://dl-cdn.alpinelinux.org/alpine/v$release/main"
+USEROPTS=none
+SSHDOPTS=openssh
+NTPOPTS=chrony
+DISKOPTS=none
+LBUOPTS=none
+APKCACHEOPTS=none
+EOF
+
+# -e: no root password for now; root is locked below.
+setup-alpine -e -f "$answers" > /var/log/testard-install.log 2>&1 || die "setup-alpine failed (see /var/log/testard-install.log)"
+rm -f "$answers"
+
+# Admin user: account and password are in /etc, so they're copied to the disk.
+id "$ADMIN" >/dev/null 2>&1 || adduser -D -s /bin/sh "$ADMIN"
+addgroup "$ADMIN" wheel >/dev/null 2>&1 || true
+printf '%s:%s\n' "$ADMIN" "$PW1" | chpasswd
+PW1=""; PW2=""
+passwd -l root >/dev/null 2>&1 || true
+
+# Packages for the installed system come from the USB stick.
+pkgs="nftables sudo curl ca-certificates tzdata openssh-server"
+[ "$CONTAINERS" = none ] || pkgs="$pkgs docker docker-cli-compose"
+# shellcheck disable=SC2086
+apk add --quiet $pkgs >> /var/log/testard-install.log 2>&1 || die "couldn't install packages (see /var/log/testard-install.log)"
+
+# What testard-setup finishes on first boot (it reads these choices).
+mkdir -p "$FIRSTBOOT"
+chmod 0700 "$FIRSTBOOT"
+cat > /etc/testard/setup.conf <<EOF
+# Choices from the last run of testard-setup, used as defaults next time.
+ADMIN=$ADMIN
+CONTAINERS=$CONTAINERS
+OPEN_PORTS=$OPEN_PORTS
+FIREWALL=1
+HARDEN_SSH=1
+AUTO_UPDATES=1
+EOF
+: > "$FIRSTBOOT/authorized_keys"
+if [ -n "$SSH_KEY" ]; then printf '%s\n' "$SSH_KEY" > "$FIRSTBOOT/authorized_keys"; fi
+if [ -n "$GITHUB" ]; then
+	if curl -fsSL -m 20 "https://github.com/$GITHUB.keys" > "$FIRSTBOOT/authorized_keys.tmp" 2>/dev/null && [ -s "$FIRSTBOOT/authorized_keys.tmp" ]; then
+		sed "s/\$/ github:$GITHUB/" "$FIRSTBOOT/authorized_keys.tmp" >> "$FIRSTBOOT/authorized_keys"
+	else
+		# No network now: try again on first boot.
+		printf '%s\n' "$GITHUB" > "$FIRSTBOOT/github-user"
+	fi
+	rm -f "$FIRSTBOOT/authorized_keys.tmp"
+fi
+[ -z "$AGENT_KEY" ] || { umask 077; printf '%s\n' "$AGENT_KEY" > "$FIRSTBOOT/agent-key"; }
+AGENT_KEY=""
+
+mkdir -p /etc/local.d
+cat > /etc/local.d/testard-firstboot.start <<'EOF'
+#!/bin/sh
+# Testard OS first boot: finish the setup with the choices made in the
+# installer, then remove this file. If there's no network yet, it tries
+# again at the next boot.
+FB=/etc/testard/firstboot
+LOG=/var/log/testard-firstboot.log
+ADMIN=$(sed -n 's/^ADMIN=//p' /etc/testard/setup.conf)
+{
+	echo "== $(date)"
+	install -m 0755 /etc/testard/testard-setup /usr/local/sbin/testard-setup
+	home=$(awk -F: -v u="$ADMIN" '$1==u {print $6}' /etc/passwd)
+	if [ -n "$home" ] && [ ! -d "$home" ]; then
+		mkdir -p "$home" && chown "$ADMIN:$(id -gn "$ADMIN")" "$home" && chmod 0750 "$home"
+	fi
+	set --
+	if [ -f "$FB/github-user" ]; then set -- "$@" --github "$(cat "$FB/github-user")"; fi
+	while IFS= read -r k; do [ -n "$k" ] && set -- "$@" --ssh-key "$k"; done < "$FB/authorized_keys"
+	if [ -f "$FB/agent-key" ]; then export TESTARD_AGENT_KEY="$(cat "$FB/agent-key")"; fi
+	if /usr/local/sbin/testard-setup --yes --user "$ADMIN" "$@"; then
+		rm -rf "$FB" /etc/local.d/testard-firstboot.start
+		echo "== first boot setup finished"
+	else
+		echo "== first boot setup failed; it will run again at the next boot"
+	fi
+} >> "$LOG" 2>&1
+EOF
+chmod 0755 /etc/local.d/testard-firstboot.start
+rc-update add local default >/dev/null 2>&1
+[ "$CONTAINERS" = none ] || rc-update add docker default >/dev/null 2>&1
+
+# Login screen on the installed system until testard-setup replaces it.
+cat > /etc/motd <<EOF
+
+  Testard OS is finishing its setup (log: /var/log/testard-firstboot.log).
+
+EOF
+rm -f /etc/profile.d/testard-live.sh
+
+ERASE_DISKS="/dev/$DISK" setup-disk -m sys "/dev/$DISK" >> /var/log/testard-install.log 2>&1 \
+	|| die "couldn't install to $DISK (see /var/log/testard-install.log)"
+
+echo
+say "${B}Done.${R} Testard OS is installed on $DISK."
+say "Remove the USB stick, then restart with: reboot"
+say "After the restart, log in as $ADMIN. The first boot finishes the setup in about a minute."

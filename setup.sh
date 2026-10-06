@@ -177,7 +177,17 @@ enable_service() {
 # ── Packages ──────────────────────────────────────────────────────────────
 
 APT_UPDATED=0
+pkg_installed() {
+  case "$FAMILY" in
+    alpine) apk info -e "$@" >/dev/null 2>&1 && [ "$(apk info -e "$@" | wc -l)" -eq $# ] ;;
+    debian) for _p in "$@"; do dpkg-query -W -f='${Status}' "$_p" 2>/dev/null | grep -q 'install ok installed' || return 1; done ;;
+  esac
+}
+
+# Already-installed packages are skipped, so a run works offline when nothing
+# new is needed (e.g. the first boot after installing Testard OS).
 pkg_install() {
+  pkg_installed "$@" && return 0
   case "$FAMILY" in
     alpine) run apk add --no-cache "$@" ;;
     debian)

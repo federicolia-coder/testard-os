@@ -1,0 +1,42 @@
+#!/bin/sh
+# Builds the Testard OS ISO with Alpine's mkimage.sh. Run it inside Alpine
+# (CI uses the alpine container), as root, from the repository root:
+#
+#   docker run --rm -v "$PWD":/src -w /src alpine:3.22 sh iso/build.sh
+#
+# The ISO lands in out/.
+
+set -eu
+
+ALPINE="${ALPINE:-3.22}"
+ARCH="${ARCH:-$(apk --print-arch)}"
+VERSION="${VERSION:-$(sed -n 's/^VERSION="\(.*\)"$/\1/p' setup.sh)}"
+MIRROR="https://dl-cdn.alpinelinux.org/alpine"
+
+apk add --no-cache alpine-sdk alpine-conf syslinux xorriso squashfs-tools \
+	grub grub-efi mtools dosfstools git fakeroot
+
+# mkimage signs the image's package index with an abuild key.
+[ -n "$(ls ~/.abuild/*.rsa 2>/dev/null)" ] || abuild-keygen -a -i -n
+
+[ -d /tmp/aports ] || git clone --depth 1 --branch "$ALPINE-stable" \
+	https://gitlab.alpinelinux.org/alpine/aports.git /tmp/aports
+
+mkdir -p ~/.mkimage out
+cp iso/mkimg.testard.sh iso/genapkovl-testard.sh ~/.mkimage/
+chmod +x ~/.mkimage/genapkovl-testard.sh
+
+export TESTARD_OS_DIR="$PWD"
+sh /tmp/aports/scripts/mkimage.sh \
+	--tag "$VERSION" \
+	--outdir "$PWD/out" \
+	--arch "$ARCH" \
+	--repository "$MIRROR/v$ALPINE/main" \
+	--extra-repository "$MIRROR/v$ALPINE/community" \
+	--profile testard
+
+iso=$(find out -maxdepth 1 -name "*.iso" | head -n 1)
+final="out/testard-os-$VERSION-$ARCH.iso"
+mv "$iso" "$final"
+sha256sum "$final" | sed 's#out/##' > "$final.sha256"
+ls -lh out/
