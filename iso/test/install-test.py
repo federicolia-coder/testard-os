@@ -239,7 +239,8 @@ checks = {
     "login screen": ("cat /etc/profile.d/testard-motd.sh", "testard"),
     "no installer packages on the server": ("apk info -e firefox-esr cage mesa-dri-gallium || echo none-installed", "none-installed"),
     "mode saved": ("cat /etc/testard/setup.conf", f"PROFILE={MODE}"),
-    "boot menu named": (sudo + "cat /boot/extlinux.conf /boot/grub/grub.cfg 2>/dev/null", "Testard OS"),
+    # BIOS (extlinux): the menu is hidden; UEFI (grub): entries say Testard OS.
+    "boot menu quiet or named": (sudo + "cat /boot/extlinux.conf /boot/grub/grub.cfg 2>/dev/null | grep -m1 -E 'MENU HIDDEN|Testard OS'", "" ),
     "no automatic login": ("grep ^tty1 /etc/inittab", "tty1::respawn:/sbin/getty 38400 tty1"),
     "first-boot files removed": ("ls /etc/local.d/ /etc/testard/", "setup.conf"),
 }
@@ -248,7 +249,7 @@ if MODE == "homelab":
 failed = []
 for name, (cmd, expected) in checks.items():
     out = remote(cmd, check=False)
-    ok = expected in out
+    ok = expected in out and out.strip() != ""
     if name == "first-boot files removed":
         ok = ok and "firstboot" not in out
     print(f"{'PASS' if ok else 'FAIL'}  {name}")

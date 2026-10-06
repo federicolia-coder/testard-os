@@ -320,7 +320,10 @@ ADMIN=$(sed -n 's/^ADMIN=//p' /etc/testard/setup.conf)
 	sed -i '/^\/media\//d; /^#\/media\//d' /etc/apk/repositories
 	# Boot menu: Testard OS, straight through.
 	if [ -f /etc/update-extlinux.conf ]; then
-		sed -i 's/^menu_title=.*/menu_title=Testard OS/; s/^timeout=.*/timeout=1/; s/^hidden=.*/hidden=1/' /etc/update-extlinux.conf
+		for kv in hidden=1 timeout=1; do
+			k=${kv%%=*}
+			if grep -q "^$k=" /etc/update-extlinux.conf; then sed -i "s/^$k=.*/$kv/" /etc/update-extlinux.conf; else echo "$kv" >> /etc/update-extlinux.conf; fi
+		done
 		update-extlinux >/dev/null 2>&1 || true
 	fi
 	if [ -f /etc/default/grub ]; then
