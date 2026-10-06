@@ -139,7 +139,7 @@ if GUI:
     if colors < 4:
         sys.exit("the graphical installer didn't show anything on the screen")
     answers = {
-        "KB": "us", "MODE": "homelab", "HOST": HOST, "TZ": "Europe/Rome", "ADMIN": USER, "PASSWORD": PASSWORD,
+        "KB": "it", "MODE": "homelab", "HOST": HOST, "TZ": "Europe/Rome", "ADMIN": USER, "PASSWORD": PASSWORD,
         "GITHUB": "", "SSH_KEY": pubkey, "CONTAINERS": "docker", "OPEN_PORTS": "80", "AGENT_KEY": "", "DISK": "vda",
     }
     import urllib.parse
@@ -248,6 +248,8 @@ checks = {
 }
 if MODE == "homelab":
     checks["name.local (avahi)"] = ("rc-status default", "avahi-daemon")
+if GUI:  # installed with the Italian layout
+    checks["keyboard layout"] = ("cat /etc/conf.d/loadkmap", "it.bmap")
 failed = []
 for name, (cmd, expected) in checks.items():
     out = remote(cmd, check=False)

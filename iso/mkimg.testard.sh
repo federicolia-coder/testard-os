@@ -18,7 +18,7 @@ profile_testard() {
 	kernel_cmdline="$kernel_cmdline rootflags=size=85%"
 	syslinux_serial="0 115200"
 	# On the image, so installing works without a network connection.
-	apks="$apks nftables sudo curl ca-certificates tzdata openssh chrony
+	apks="$apks nftables sudo curl ca-certificates tzdata kbd-bkeymaps openssh chrony
 		docker docker-cli-compose avahi dbus
 		e2fsprogs dosfstools sfdisk grub grub-efi efibootmgr syslinux
 		eudev udev-init-scripts udev-init-scripts-openrc

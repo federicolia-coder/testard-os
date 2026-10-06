@@ -42,6 +42,7 @@ alpine-base
 curl
 ca-certificates
 tzdata
+kbd-bkeymaps
 eudev
 udev-init-scripts
 udev-init-scripts-openrc
