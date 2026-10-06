@@ -13,8 +13,9 @@
 # this file first if you like: it is plain shell, top to bottom.
 
 set -eu
+umask 022 # files written below must never be group or world writable
 
-VERSION="0.1.1"
+VERSION="0.2.0"
 REPO_RAW="https://raw.githubusercontent.com/federicolia-coder/testard-os/main"
 AGENT_RAW="https://raw.githubusercontent.com/federicolia-coder/testard-agent/main"
 LOG=/var/log/testard-setup.log
@@ -26,6 +27,7 @@ ADMIN=""
 SSH_KEYS=""
 GITHUB_USER=""
 CONTAINERS=""        # docker | podman | none
+PROFILE=""           # homelab | server
 OPEN_PORTS=""
 FIREWALL=1
 HARDEN_SSH=1
@@ -39,7 +41,7 @@ SAVED=/etc/testard/setup.conf
 # just to add the agent) doesn't undo them. Read as data, never executed.
 saved() { sed -n "s/^$1=//p" "$SAVED" 2>/dev/null | head -n 1; }
 if [ -r "$SAVED" ]; then
-  ADMIN=$(saved ADMIN); CONTAINERS=$(saved CONTAINERS); OPEN_PORTS=$(saved OPEN_PORTS)
+  ADMIN=$(saved ADMIN); CONTAINERS=$(saved CONTAINERS); OPEN_PORTS=$(saved OPEN_PORTS); PROFILE=$(saved PROFILE)
   FIREWALL=$(saved FIREWALL); HARDEN_SSH=$(saved HARDEN_SSH); AUTO_UPDATES=$(saved AUTO_UPDATES)
   case "$FIREWALL$HARDEN_SSH$AUTO_UPDATES" in [01][01][01]) ;; *) FIREWALL=1; HARDEN_SSH=1; AUTO_UPDATES=1 ;; esac
 fi
@@ -53,6 +55,10 @@ Usage: sudo sh setup.sh [options]
   --user NAME              create an admin user (sudo) to log in with
   --ssh-key "ssh-ed25519 …"  authorize this public key for the admin user
   --github USERNAME        authorize the public keys on github.com/USERNAME.keys
+  --profile homelab|server homelab: SSH and opened ports reachable only from
+                           your local network, and the server answers as
+                           NAME.local; server (default): opened ports are
+                           reachable from the internet
   --containers ENGINE      docker, podman or none (default: none)
   --open PORTS             ports to allow besides SSH, e.g. 80,443,51820/udp
                            (replaces the list from the last run; "none" for none)
@@ -76,6 +82,7 @@ while [ $# -gt 0 ]; do
 "; shift 2 ;;
     --github) GITHUB_USER="${2:-}"; shift 2 ;;
     --containers) CONTAINERS="${2:-}"; shift 2 ;;
+    --profile) PROFILE="${2:-}"; shift 2 ;;
     --open) OPEN_PORTS="${2:-}"; [ "$OPEN_PORTS" != none ] || OPEN_PORTS=""; shift 2 ;;
     --agent-key) AGENT_KEY="${2:-}"; shift 2 ;;
     --agent-url) AGENT_URL="${2:-}"; shift 2 ;;
@@ -265,6 +272,8 @@ fi
 
 [ -n "$HOSTNAME_NEW" ] || HOSTNAME_NEW="$CURRENT_HOST"
 [ -n "$CONTAINERS" ] || CONTAINERS=none
+[ -n "$PROFILE" ] || PROFILE=server
+case "$PROFILE" in homelab|server) ;; *) die "--profile must be homelab or server" ;; esac
 HOSTNAME_NEW=$(printf '%s' "$HOSTNAME_NEW" | tr '[:upper:]' '[:lower:]')
 
 valid_hostname "$HOSTNAME_NEW" || die "the server name may use letters, digits and dashes (up to 63), e.g. homelab-1"
@@ -294,8 +303,9 @@ echo "${B}This is what will happen on $OS_NAME:${R}"
 [ "$HARDEN_SSH" -eq 0 ] || say "SSH: keys only, no root login with a password (only if a key is in place, so you can't be locked out)"
 if [ "$FIREWALL" -eq 1 ]; then
   if [ -n "$OTHER_FIREWALL" ]; then say "Firewall: left to $OTHER_FIREWALL, which is already active"
-  else say "Firewall: block incoming connections except SSH$(printf '%s' "$PORTS" | awk 'NF{printf ", %s%s", $2, ($1=="udp" ? "/udp" : "")}')"; fi
+  else say "Firewall: block incoming connections except SSH$(printf '%s' "$PORTS" | awk 'NF{printf ", %s%s", $2, ($1=="udp" ? "/udp" : "")}')$( [ "$PROFILE" = homelab ] && printf ', and only from your local network')"; fi
 fi
+[ "$PROFILE" = server ] || say "Answer on the local network as $HOSTNAME_NEW.local"
 [ "$AUTO_UPDATES" -eq 0 ] || say "Install security updates automatically every day"
 [ "$CONTAINERS" = none ] || say "Install $CONTAINERS with compose"
 say "Lighter defaults: capped system logs$( [ "$FAMILY" = debian ] && printf ', no recommended extras from apt')"
@@ -312,6 +322,7 @@ mkdir -p /etc/testard
 cat > "$SAVED" <<EOF
 # Choices from the last run of testard-setup, used as defaults next time.
 ADMIN=$ADMIN
+PROFILE=$PROFILE
 CONTAINERS=$CONTAINERS
 OPEN_PORTS=$OPEN_PORTS
 FIREWALL=$FIREWALL
@@ -423,7 +434,7 @@ fi
 # ── 4. SSH ────────────────────────────────────────────────────────────────
 
 [ -f /etc/ssh/ssh_host_ed25519_key ] || run ssh-keygen -A
-mkdir -p /run/sshd # sshd -t needs it, and only the ssh service creates it
+mkdir -p /run/sshd && chmod 0755 /run/sshd # sshd -t needs it, and only the ssh service creates it
 SSH_PORTS=$(sshd -T 2>/dev/null | awk '$1=="port" {print $2}' | sort -u | tr '\n' ' ')
 [ -n "$SSH_PORTS" ] || SSH_PORTS=22
 
@@ -488,6 +499,23 @@ if [ "$FIREWALL" -eq 1 ]; then
     NFT=$(command -v nft || echo /usr/sbin/nft)
     tcp_ports=$( { for p in $SSH_PORTS; do echo "$p"; done; printf '%s\n' "$PORTS" | awk '$1=="tcp"{print $2}'; } | sort -un | paste -sd, - | sed 's/,/, /g')
     udp_ports=$(printf '%s\n' "$PORTS" | awk '$1=="udp"{print $2}' | sort -un | paste -sd, - | sed 's/,/, /g')
+    # Homelab: only devices on the local network (and Tailscale's range) can
+    # connect; it also answers mDNS so NAME.local works.
+    if [ "$PROFILE" = homelab ]; then
+      from4="ip saddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 100.64.0.0/10 } "
+      from6="ip6 saddr { fc00::/7, fe80::/10 } "
+      who="local network"
+    else
+      from4=""; from6=""; who="anyone"
+    fi
+    allow() { # allow "match" "comment": one line, or one per IP family on a homelab
+      if [ -n "$from4" ]; then
+        printf '    %s%s accept comment "%s"\n' "$from4" "$1" "$2"
+        printf '    %s%s accept comment "%s"\n' "$from6" "$1" "$2"
+      else
+        printf '    %s accept comment "%s"\n' "$1" "$2"
+      fi
+    }
     # Its own table, so it never touches rules from Docker or anyone else.
     cat > /etc/testard/firewall.nft.new <<EOF
 #!$NFT -f
@@ -508,8 +536,9 @@ table inet testard {
     ct state invalid drop
     meta l4proto { icmp, ipv6-icmp } accept
     udp dport 546 ip6 daddr fe80::/64 accept comment "DHCPv6"
-    tcp dport { $tcp_ports } accept comment "SSH and opened ports"
-$( [ -z "$udp_ports" ] || printf '    udp dport { %s } accept comment "opened ports"\n' "$udp_ports")
+$(allow "tcp dport { $tcp_ports }" "SSH and opened ports, from $who")
+$( [ -z "$udp_ports" ] || allow "udp dport { $udp_ports }" "opened ports, from $who")
+$( [ "$PROFILE" = server ] || allow "udp dport 5353" "mDNS: NAME.local")
   }
 }
 EOF
@@ -566,7 +595,7 @@ EOF
         none) run "$NFT" -f /etc/testard/firewall.nft || true
               note "the firewall is on now but won't come back after a reboot (no init system found)" ;;
       esac
-      say "incoming allowed: tcp ${tcp_ports}${udp_ports:+, udp $udp_ports}"
+      say "incoming allowed from $who: tcp ${tcp_ports}${udp_ports:+, udp $udp_ports}"
     else
       rm -f /etc/testard/firewall.nft.new
       note "the firewall rules didn't pass nft's check, so they were not applied (details in $LOG)"
@@ -638,6 +667,17 @@ EOF
     chmod 0755 /etc/periodic/weekly/testard-logs
     say "system log rotated above 10 MB"
   fi
+fi
+
+# ── 7b. Local network name (homelab) ──────────────────────────────────────
+
+if [ "$PROFILE" = homelab ]; then
+  step "Local network name: $HOSTNAME_NEW.local"
+  case "$FAMILY" in
+    alpine) pkg_install avahi dbus; enable_service dbus; enable_service avahi-daemon ;;
+    debian) pkg_install avahi-daemon; enable_service avahi-daemon ;;
+  esac
+  say "other devices on your network can reach it as $HOSTNAME_NEW.local"
 fi
 
 # ── 8. Containers ─────────────────────────────────────────────────────────

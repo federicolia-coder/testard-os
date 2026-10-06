@@ -20,6 +20,12 @@ import pexpect
 
 ISO = sys.argv[1]
 UEFI = "--uefi" in sys.argv[2:]
+# --gui: install through the graphical installer's backend (homelab), and
+# save a screenshot of the screen; otherwise answer the text installer (server).
+GUI = "--gui" in sys.argv[2:]
+MODE = "homelab" if GUI else "server"
+SHOTS = os.environ.get("SCREENSHOT_DIR", "out/screens")
+MONITOR = os.path.join(tempfile.gettempdir(), f"qemu-monitor-{os.getpid()}.sock")
 OVMF = "/usr/share/ovmf/OVMF.fd"
 WORK = tempfile.mkdtemp(prefix="testard-os-test-")
 DISK = os.path.join(WORK, "disk.qcow2")
@@ -35,7 +41,10 @@ kvm = os.path.exists("/dev/kvm")
 
 def qemu_cmd(with_iso):
     cmd = [
-        "qemu-system-x86_64", "-m", "1024", "-smp", "2", "-nographic",
+        "qemu-system-x86_64", "-m", "1536", "-smp", "2",
+        "-display", "none", "-vga", "std", "-serial", "stdio",
+        "-monitor", f"unix:{MONITOR},server,nowait",
+        "-device", "qemu-xhci", "-device", "usb-tablet", "-device", "usb-kbd",
         "-drive", f"file={DISK},if=virtio,format=qcow2",
         "-netdev", f"user,id=n0,hostfwd=tcp:127.0.0.1:{SSH_PORT}-:22,hostfwd=tcp:127.0.0.1:8080-:80,hostfwd=tcp:127.0.0.1:8081-:81",
         "-device", "virtio-net-pci,netdev=n0",
@@ -51,6 +60,8 @@ def qemu_cmd(with_iso):
 
 slow = 1 if kvm else 6
 def start(with_iso):
+    if os.path.exists(MONITOR):
+        os.remove(MONITOR)
     cmd = qemu_cmd(with_iso)
     p = pexpect.spawn(cmd[0], cmd[1:], encoding="utf-8", codec_errors="replace", timeout=120 * slow)
     p.logfile_read = sys.stdout
@@ -58,6 +69,43 @@ def start(with_iso):
 
 
 vm = start(with_iso=True)
+
+
+def monitor(cmd):
+    import socket
+    with socket.socket(socket.AF_UNIX) as m:
+        m.connect(MONITOR)
+        m.recv(4096)
+        m.sendall((cmd + "\n").encode())
+        time.sleep(1)
+        m.recv(65536)
+
+
+def screenshot(name):
+    """Saves the VM's screen as PNG (QEMU writes PPM; converted here)."""
+    import struct
+    import zlib
+    os.makedirs(SHOTS, exist_ok=True)
+    ppm = os.path.join(WORK, name + ".ppm")
+    monitor(f"screendump {ppm}")
+    time.sleep(1)
+    data = open(ppm, "rb").read()
+    parts = data.split(b"\n", 3)
+    w, h = map(int, parts[1].split())
+    pixels = parts[3]
+    raw = b"".join(b"\x00" + pixels[y * w * 3:(y + 1) * w * 3] for y in range(h))
+
+    def chunk(kind, body):
+        return struct.pack(">I", len(body)) + kind + body + struct.pack(">I", zlib.crc32(kind + body) & 0xFFFFFFFF)
+
+    png = b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0)) \
+        + chunk(b"IDAT", zlib.compress(raw, 9)) + chunk(b"IEND", b"")
+    path = os.path.join(SHOTS, f"{'uefi' if UEFI else 'bios'}-{name}.png")
+    open(path, "wb").write(png)
+    # A screen that is all one color means nothing was drawn.
+    colors = len(set(pixels[i:i + 3] for i in range(0, min(len(pixels), 3 * w * h), 3 * 97)))
+    print(f"\nscreenshot {path}: {w}x{h}, {colors} colors sampled", flush=True)
+    return colors
 
 
 def step(title):
@@ -75,29 +123,61 @@ vm.sendline("root")
 vm.expect("testard-install")  # the welcome text
 vm.expect_exact(":~# ")
 
-step("Run the installer")
-vm.sendline("testard-install")
-answer("Keyboard layout", "us")
-answer("Server name", HOST)
-answer("Time zone", "")
-answer("Your user name", USER)
-answer("Password for", PASSWORD)
-answer("Same password again", PASSWORD)
-answer("GitHub username", "")
-answer("Or paste a public SSH key", pubkey)
-answer("Container engine", "docker")
-answer("Ports to open besides SSH", "80")
-answer("Testard agent key", "")
-answer("Disk to install on", "")
-vm.expect(r"Type the disk name \((\w+)\)")
-vm.sendline(vm.match.group(1))
-i = vm.expect(["Testard OS is installed", "The installation stopped"], timeout=900 * slow)
-if i == 1:
+if GUI:
+    step("Graphical installer")
+    vm.sendline("for i in $(seq 1 90); do wget -qO- http://127.0.0.1:8080/cgi-bin/info >/dev/null 2>&1 && break; sleep 1; done; "
+                "wget -qO- http://127.0.0.1:8080/cgi-bin/info | head -c 300; echo; echo GUI-$?")
+    vm.expect(r"GUI-(\d+)", timeout=150 * slow)
+    if vm.match.group(1) != "0":
+        sys.exit("the graphical installer's backend didn't start")
+    time.sleep(20)  # let cage and cog draw the page
+    colors = screenshot("welcome")
+    vm.sendline("cat /run/testard/gui.log | tail -n 20; pgrep -l cage; pgrep -l cog")
     vm.expect_exact(":~# ")
-    vm.sendline("tail -n 40 /var/log/testard-install.log")
+    if colors < 4:
+        sys.exit("the graphical installer didn't show anything on the screen")
+    answers = {
+        "KB": "us", "MODE": "homelab", "HOST": HOST, "TZ": "Europe/Rome", "ADMIN": USER, "PASSWORD": PASSWORD,
+        "GITHUB": "", "SSH_KEY": pubkey, "CONTAINERS": "docker", "OPEN_PORTS": "80", "AGENT_KEY": "", "DISK": "vda",
+    }
+    import urllib.parse
+    body = urllib.parse.urlencode(answers)
+    vm.sendline(f"curl -s -X POST --data '{body}' http://127.0.0.1:8080/cgi-bin/install; echo")
+    vm.expect_exact('{"ok":true}')
     vm.expect_exact(":~# ")
-    sys.exit("installer failed")
-vm.expect_exact(":~# ")
+    vm.sendline("while :; do s=$(curl -s http://127.0.0.1:8080/cgi-bin/progress); echo \"$s\"; "
+                "case \"$s\" in *done*|*failed*) break;; esac; sleep 5; done")
+    i = vm.expect(['"state":"done"', '"state":"failed"'], timeout=900 * slow)
+    vm.expect_exact(":~# ")
+    if i == 1:
+        vm.sendline("tail -n 40 /var/log/testard-install.log")
+        vm.expect_exact(":~# ")
+        sys.exit("installer failed")
+else:
+    step("Run the text installer")
+    vm.sendline("testard-install")
+    answer("Keyboard layout", "us")
+    answer("How will you use it", MODE)
+    answer("Server name", HOST)
+    answer("Time zone", "")
+    answer("Your user name", USER)
+    answer("Password for", PASSWORD)
+    answer("Same password again", PASSWORD)
+    answer("GitHub username", "")
+    answer("Or paste a public SSH key", pubkey)
+    answer("Container engine", "docker")
+    answer("Ports to open besides SSH", "80")
+    answer("Testard agent key", "")
+    answer("Disk to install on", "")
+    vm.expect(r"Type the disk name \((\w+)\)")
+    vm.sendline(vm.match.group(1))
+    i = vm.expect(["Testard OS is installed", "The installation stopped"], timeout=900 * slow)
+    if i == 1:
+        vm.expect_exact(":~# ")
+        vm.sendline("tail -n 40 /var/log/testard-install.log")
+        vm.expect_exact(":~# ")
+        sys.exit("installer failed")
+    vm.expect_exact(":~# ")
 
 step("Restart from the disk, without the installer")
 vm.sendline("poweroff")
@@ -148,15 +228,21 @@ checks = {
     "ssh: no passwords": (sudo + "sshd -T | grep -i '^passwordauthentication'", "passwordauthentication no"),
     "ssh: no root login": (sudo + "sshd -T | grep -i '^permitrootlogin'", "permitrootlogin no"),
     "firewall loaded": (sudo + "nft list table inet testard", "tcp dport { 22, 80 }"),
+    "firewall matches the mode": (sudo + "nft list table inet testard",
+                                  "192.168.0.0/16" if MODE == "homelab" else "SSH and opened ports, from anyone"),
     "firewall at boot": ("ls /etc/runlevels/boot/", "testard-firewall"),
     "daily updates": ("ls /etc/periodic/daily/", "testard-updates"),
     "docker running": (sudo + "docker info --format '{{.ServerVersion}}'", "."),
     "docker compose": ("docker compose version", "Docker Compose"),
     "testard-setup installed": ("testard-setup --version", "testard-setup"),
     "login screen": ("cat /etc/profile.d/testard-motd.sh", "testard"),
+    "mode saved": ("cat /etc/testard/setup.conf", f"PROFILE={MODE}"),
+    "boot menu named": (sudo + "cat /boot/extlinux.conf /boot/grub/grub.cfg 2>/dev/null", "Testard OS"),
     "no automatic login": ("grep ^tty1 /etc/inittab", "tty1::respawn:/sbin/getty 38400 tty1"),
     "first-boot files removed": ("ls /etc/local.d/ /etc/testard/", "setup.conf"),
 }
+if MODE == "homelab":
+    checks["name.local (avahi)"] = ("rc-status default", "avahi-daemon")
 failed = []
 for name, (cmd, expected) in checks.items():
     out = remote(cmd, check=False)

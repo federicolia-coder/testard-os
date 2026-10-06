@@ -42,6 +42,17 @@ alpine-base
 curl
 ca-certificates
 tzdata
+eudev
+udev-init-scripts
+udev-init-scripts-openrc
+busybox-extras
+cage
+cog
+seatd
+seatd-launch
+mesa-dri-gallium
+xkeyboard-config
+font-dejavu
 EOF
 
 makefile root:root 0644 "$tmp/etc/issue" <<'EOF'
@@ -91,17 +102,31 @@ EOF
 # can copy them to the new system along with the rest of /etc.
 makefile root:root 0755 "$tmp/etc/testard/testard-install" < "$SRC/iso/testard-install"
 makefile root:root 0755 "$tmp/etc/testard/testard-setup" < "$SRC/setup.sh"
+makefile root:root 0755 "$tmp/etc/testard/testard-gui" < "$SRC/iso/testard-gui"
+mkdir -p "$tmp/etc/testard/installer"
+cp -R "$SRC/iso/installer/." "$tmp/etc/testard/installer/"
+chown -R root:root "$tmp/etc/testard/installer"
+chmod -R u=rwX,go=rX "$tmp/etc/testard/installer"
+chmod 0755 "$tmp/etc/testard/installer/cgi-bin/"*
 makefile root:root 0644 "$tmp/etc/profile.d/testard-live.sh" <<'EOF'
-# Testard OS live system: make the installer a plain command.
+# Testard OS live system: make the installer a plain command, and start the
+# graphical installer on the screen.
 case ":$PATH:" in *:/etc/testard:*) ;; *) PATH="$PATH:/etc/testard" ;; esac
 alias testard-install='/etc/testard/testard-install'
+if [ "$(tty)" = /dev/tty1 ] && [ -z "${TESTARD_GUI_STARTED:-}" ]; then
+	export TESTARD_GUI_STARTED=1
+	/etc/testard/testard-gui
+fi
 EOF
 
+# udev rather than mdev: the graphical installer's input and screen need it.
 rc_add devfs sysinit
 rc_add dmesg sysinit
-rc_add mdev sysinit
-rc_add hwdrivers sysinit
+rc_add udev sysinit
+rc_add udev-trigger sysinit
+rc_add udev-settle sysinit
 rc_add modloop sysinit
+rc_add udev-postmount default
 
 rc_add hwclock boot
 rc_add modules boot

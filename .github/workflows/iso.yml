@@ -44,14 +44,26 @@ jobs:
           sudo apt-get install -y -qq --no-install-recommends qemu-system-x86 qemu-utils ovmf python3-pexpect
           python3 iso/test/install-test.py out/testard-os-*.iso
 
-      - name: Install test, UEFI (QEMU)
+      - name: Install test, UEFI, graphical installer (QEMU)
         timeout-minutes: 30
-        run: python3 iso/test/install-test.py out/testard-os-*.iso --uefi
+        run: python3 iso/test/install-test.py out/testard-os-*.iso --uefi --gui
+
+      - name: Publish screenshots
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ls out/screens/*.png >/dev/null 2>&1 || exit 0
+          gh release view ci-screenshots >/dev/null 2>&1 || \
+            gh release create ci-screenshots --prerelease --title "CI screenshots" --notes "Screens from the latest ISO test run."
+          gh release upload ci-screenshots out/screens/*.png --clobber
 
       - uses: actions/upload-artifact@v5
         with:
           name: testard-os-iso
-          path: out/testard-os-*
+          path: |
+            out/testard-os-*
+            out/screens/*
           retention-days: 14
           compression-level: 0
 

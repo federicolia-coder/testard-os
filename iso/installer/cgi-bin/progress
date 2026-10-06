@@ -1,0 +1,14 @@
+#!/bin/sh
+# How the installation is going: running (with percent and step), done or failed.
+# shellcheck source=iso/installer/lib.sh
+. ../lib.sh
+line=$(head -n 1 "$RUN/state" 2>/dev/null || echo idle)
+state=${line%%|*}
+case "$state" in
+	running)
+		rest=${line#*|}; pct=${rest%%|*}; text=${rest#*|}
+		reply "200 OK" "{\"state\":\"running\",\"percent\":${pct:-0},\"text\":\"$(json_str "$text")\"}" ;;
+	failed) reply "200 OK" "{\"state\":\"failed\",\"text\":\"$(json_str "${line#*|}")\"}" ;;
+	done) reply "200 OK" '{"state":"done"}' ;;
+	*) reply "200 OK" '{"state":"idle"}' ;;
+esac

@@ -1,0 +1,43 @@
+#!/bin/sh
+# Starts the graphical installer on the screen: a local web page
+# (installer/) shown full screen by cog in the cage kiosk compositor.
+# If the screen can't show it, the text installer is offered instead.
+
+WWW=/run/testard/www
+RUN=/run/testard
+
+mkdir -p "$RUN"
+# Serve a copy from /run: the installer removes /etc/testard/installer
+# before it copies /etc to the disk.
+if [ ! -d "$WWW" ]; then
+	cp -a /etc/testard/installer "$WWW"
+	chmod 0755 "$WWW"/cgi-bin/*
+fi
+if ! pgrep -f "httpd -p 127.0.0.1:8080" >/dev/null 2>&1; then
+	busybox-extras httpd -p 127.0.0.1:8080 -h "$WWW" -c "$WWW/httpd.conf"
+fi
+
+export XDG_RUNTIME_DIR="$RUN/xdg"
+mkdir -p "$XDG_RUNTIME_DIR"
+chmod 0700 "$XDG_RUNTIME_DIR"
+
+started=$(date +%s)
+while :; do
+	rm -f "$RUN/restart-screen"
+	layout=$(cat "$RUN/xkb" 2>/dev/null || echo us)
+	XKB_DEFAULT_LAYOUT="$layout" seatd-launch -- cage -s -- \
+		cog --platform=wl "http://127.0.0.1:8080/" > "$RUN/gui.log" 2>&1
+	# The keyboard layout changed: start again with it.
+	[ -f "$RUN/restart-screen" ] && continue
+	break
+done
+
+clear
+if [ $(( $(date +%s) - started )) -lt 15 ]; then
+	echo "The graphical installer couldn't start on this screen (details: $RUN/gui.log)."
+else
+	echo "The graphical installer closed."
+fi
+echo
+echo "Use the text installer instead: type  testard-install  and press Enter."
+echo

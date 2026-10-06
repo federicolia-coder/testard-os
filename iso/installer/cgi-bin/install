@@ -1,0 +1,21 @@
+#!/bin/sh
+# Starts testard-install with the answers from the form. testard-install
+# checks every answer itself; progress tells the page how it's going.
+# shellcheck source=iso/installer/lib.sh
+. ../lib.sh
+require_post
+if grep -q '^running' "$RUN/state" 2>/dev/null; then fail "409 Conflict" "the installation is already running"; fi
+read_form
+mkdir -p "$RUN"
+answers="$RUN/answers"
+(
+	umask 077
+	: > "$answers"
+	for k in KB MODE HOST TZ ADMIN PASSWORD GITHUB SSH_KEY CONTAINERS OPEN_PORTS AGENT_KEY DISK; do
+		printf '%s=%s\n' "$k" "$(field "$k")" >> "$answers"
+	done
+)
+printf 'running|1|Starting\n' > "$RUN/state"
+# setsid: keep installing even if the screen restarts.
+setsid "$INSTALL" --answers "$answers" > "$RUN/install.out" 2>&1 < /dev/null &
+reply "202 Accepted" '{"ok":true}'

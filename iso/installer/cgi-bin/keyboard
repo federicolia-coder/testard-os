@@ -1,0 +1,15 @@
+#!/bin/sh
+# Sets the keyboard layout. The graphical screen reads it when it starts, so
+# this restarts the screen (testard-gui starts it again with the new layout).
+# shellcheck source=iso/installer/lib.sh
+. ../lib.sh
+require_post
+read_form
+layout=$(field layout)
+if ! printf "%s" "$layout" | grep -Eq "^[a-z]{2,3}$" || [ ! -d "/usr/share/bkeymaps/$layout" ]; then fail "400 Bad Request" "unknown keyboard layout"; fi
+mkdir -p "$RUN"
+printf '%s\n' "$layout" > "$RUN/xkb"
+setup-keymap "$layout" "$layout" >/dev/null 2>&1 || true
+touch "$RUN/restart-screen"
+( sleep 1; pkill -x cage ) >/dev/null 2>&1 &
+reply "200 OK" '{"ok":true}'

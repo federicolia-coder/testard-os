@@ -1,0 +1,17 @@
+#!/bin/sh
+# Disks, time zones, network and keyboard for the installer's first screens.
+# shellcheck source=iso/installer/lib.sh
+. ../lib.sh
+
+disks=$("$INSTALL" --list-disks 2>/dev/null | while read -r name gb model; do
+	printf '{"name":"%s","gb":%s,"model":"%s"},' "$(json_str "$name")" "${gb:-0}" "$(json_str "$model")"
+done)
+
+zones=$( { echo UTC; cd /usr/share/zoneinfo 2>/dev/null && find Africa America Antarctica Asia Atlantic Australia Europe Indian Pacific -type f 2>/dev/null; } \
+	| sort -u | awk '{printf "\"%s\",", $0}')
+
+ip=$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for (i=1;i<NF;i++) if ($i=="src") {print $(i+1); exit}}')
+kb=$(cat "$RUN/xkb" 2>/dev/null || echo us)
+version=$(sed -n 's/^VERSION="\(.*\)"$/\1/p' /etc/testard/testard-setup 2>/dev/null)
+
+reply "200 OK" "{\"version\":\"$(json_str "$version")\",\"keyboard\":\"$(json_str "$kb")\",\"ip\":\"$(json_str "$ip")\",\"disks\":[${disks%,}],\"timezones\":[${zones%,}]}"

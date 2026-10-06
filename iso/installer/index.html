@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Install Testard OS</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<div class="shell">
+  <aside class="side">
+    <img class="logo" src="logo.svg" alt="testard. OS">
+    <ol class="steps" id="steps">
+      <li data-step="mode"><span class="n">1</span>How you'll use it</li>
+      <li data-step="system"><span class="n">2</span>This server</li>
+      <li data-step="account"><span class="n">3</span>Your account</li>
+      <li data-step="apps"><span class="n">4</span>Apps and ports</li>
+      <li data-step="disk"><span class="n">5</span>Disk</li>
+      <li data-step="review"><span class="n">6</span>Install</li>
+    </ol>
+    <div class="foot">Testard OS <span id="version"></span><br>Based on Alpine Linux</div>
+  </aside>
+
+  <main>
+    <!-- Welcome -->
+    <section class="step" data-step="welcome">
+      <h1>Install Testard OS</h1>
+      <p class="lead">A lean server for your homelab or a VPS: keys-only SSH, a firewall and daily security updates, ready from the first boot. It takes about five minutes.</p>
+      <div class="field">
+        <label for="kb">Keyboard</label>
+        <select id="kb"></select>
+        <span class="hint">Changing it restarts this screen for a moment.</span>
+      </div>
+      <p><span class="status" id="net">Checking the network…</span></p>
+      <div class="actions">
+        <button class="primary" data-next>Start</button>
+      </div>
+    </section>
+
+    <!-- Mode -->
+    <section class="step" data-step="mode">
+      <h1>How will you use it?</h1>
+      <p class="lead">This sets sensible defaults. You can change any of them later with <code>testard-setup</code>.</p>
+      <div class="choices" role="radiogroup" aria-label="How you'll use it">
+        <label class="choice">
+          <input type="radio" name="mode" value="homelab" checked>
+          <span class="title">Homelab</span>
+          <span class="sub">At home or in the office, on your own network.</span>
+          <ul>
+            <li>Reachable only from your network</li>
+            <li>Answers as <b>name.local</b></li>
+            <li>Docker ready for your apps</li>
+          </ul>
+        </label>
+        <label class="choice">
+          <input type="radio" name="mode" value="server">
+          <span class="title">Server</span>
+          <span class="sub">A VPS or a machine in a datacenter.</span>
+          <ul>
+            <li>Ports you open are public</li>
+            <li>Nothing extra running</li>
+            <li>Docker only if you want it</li>
+          </ul>
+        </label>
+      </div>
+      <div class="actions">
+        <button class="primary" data-next>Continue</button>
+        <button class="link" data-back>Back</button>
+      </div>
+    </section>
+
+    <!-- System -->
+    <section class="step" data-step="system">
+      <h1>This server</h1>
+      <p class="lead">A name to find it by, and the time zone for its clock and logs.</p>
+      <div class="field">
+        <label for="host">Name</label>
+        <input id="host" type="text" class="mono" autocomplete="off" spellcheck="false" maxlength="63">
+        <span class="hint">Lower case letters, digits and dashes, e.g. homelab-1.</span>
+        <span class="error" id="host-error"></span>
+      </div>
+      <div class="field">
+        <label for="tz">Time zone</label>
+        <select id="tz"></select>
+      </div>
+      <div class="actions">
+        <button class="primary" data-next>Continue</button>
+        <button class="link" data-back>Back</button>
+      </div>
+    </section>
+
+    <!-- Account -->
+    <section class="step" data-step="account">
+      <h1>Your account</h1>
+      <p class="lead">You log in with this user. Root login is turned off.</p>
+      <div class="field">
+        <label for="user">User name</label>
+        <input id="user" type="text" class="mono" autocomplete="off" spellcheck="false" maxlength="32">
+        <span class="error" id="user-error"></span>
+      </div>
+      <div class="row">
+        <div class="field">
+          <label for="pw">Password</label>
+          <input id="pw" type="password" autocomplete="new-password">
+          <span class="hint">At least 8 characters. Used by <code>sudo</code>.</span>
+          <span class="error" id="pw-error"></span>
+        </div>
+        <div class="field">
+          <label for="pw2">Same password again</label>
+          <input id="pw2" type="password" autocomplete="new-password">
+          <span class="error" id="pw2-error"></span>
+        </div>
+      </div>
+      <h2>SSH keys</h2>
+      <p class="hint" style="margin-top:-6px;color:var(--subtle);max-width:34em">Log in from your computer without a password. Without a key, you can still log in with the password until you add one.</p>
+      <div class="field">
+        <label for="github">GitHub username</label>
+        <input id="github" type="text" class="mono" autocomplete="off" spellcheck="false" maxlength="39" placeholder="optional">
+        <span class="hint">Uses the public keys on github.com/<i>username</i>.keys</span>
+        <span class="error" id="github-error"></span>
+      </div>
+      <div class="field">
+        <label for="sshkey">Or paste a public key</label>
+        <textarea id="sshkey" spellcheck="false" placeholder="ssh-ed25519 AAAA… (optional)"></textarea>
+        <span class="error" id="sshkey-error"></span>
+      </div>
+      <div class="actions">
+        <button class="primary" data-next>Continue</button>
+        <button class="link" data-back>Back</button>
+      </div>
+    </section>
+
+    <!-- Apps -->
+    <section class="step" data-step="apps">
+      <h1>Apps and ports</h1>
+      <p class="lead">Everything else stays closed.</p>
+      <div class="choices list">
+        <label class="choice">
+          <input type="checkbox" id="docker">
+          <span class="title">Docker</span>
+          <span class="sub">With Compose, to run apps like Nextcloud, Jellyfin or Home Assistant.</span>
+        </label>
+      </div>
+      <h2>Ports to open</h2>
+      <div class="field">
+        <label for="ports">Besides SSH</label>
+        <input id="ports" type="text" class="mono" autocomplete="off" spellcheck="false" placeholder="e.g. 80,443,51820/udp">
+        <span class="hint" id="ports-hint"></span>
+        <span class="error" id="ports-error"></span>
+      </div>
+      <h2>Connect to Testard</h2>
+      <div class="field">
+        <label for="agent">Agent key</label>
+        <input id="agent" type="password" class="mono" autocomplete="off" spellcheck="false" placeholder="tsk_… (optional)">
+        <span class="hint">In Testard: Cloud Providers → Connect provider → Any server. The server then shows up next to your other servers and cloud accounts.</span>
+        <span class="error" id="agent-error"></span>
+      </div>
+      <div class="actions">
+        <button class="primary" data-next>Continue</button>
+        <button class="link" data-back>Back</button>
+      </div>
+    </section>
+
+    <!-- Disk -->
+    <section class="step" data-step="disk">
+      <h1>Where to install it</h1>
+      <p class="lead">The USB stick isn't listed: it can't be used.</p>
+      <div class="choices list" id="disks" role="radiogroup" aria-label="Disk"></div>
+      <p id="no-disks" class="warn" hidden><strong>No disk found.</strong> Connect a disk and restart the installer.</p>
+      <div class="actions">
+        <button class="primary" data-next>Continue</button>
+        <button class="link" data-back>Back</button>
+      </div>
+    </section>
+
+    <!-- Review -->
+    <section class="step" data-step="review">
+      <h1>Ready to install</h1>
+      <p class="lead">Check everything once more.</p>
+      <dl class="summary" id="summary"></dl>
+      <p class="warn"><strong>Everything on <span id="erase-disk"></span> will be erased.</strong> This can't be undone.</p>
+      <label class="check"><input type="checkbox" id="confirm"> I understand. Erase the disk and install Testard OS.</label>
+      <div class="actions">
+        <button class="primary" id="install" disabled>Install</button>
+        <button class="link" data-back>Back</button>
+      </div>
+      <p class="field error" id="install-error"></p>
+    </section>
+
+    <!-- Installing -->
+    <section class="step" data-step="installing">
+      <h1 id="inst-title">Installing…</h1>
+      <p class="lead" id="inst-lead">Keep the USB stick in until it's done.</p>
+      <div class="bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" id="bar"><span></span></div>
+      <p class="now"><span id="now">Starting</span><span class="pct" id="pct"></span></p>
+    </section>
+
+    <!-- Done -->
+    <section class="step" data-step="done">
+      <h1>Testard OS is installed</h1>
+      <p class="lead">Two more steps:</p>
+      <ol class="steps-next">
+        <li>Remove the USB stick.</li>
+        <li>Restart. The first boot finishes the setup in about a minute, then log in as <b class="mono" id="done-user"></b><span id="done-local"></span>.</li>
+      </ol>
+      <div class="actions"><button class="primary" id="reboot">Restart now</button></div>
+    </section>
+
+    <!-- Failed -->
+    <section class="step" data-step="failed">
+      <h1>The installation stopped</h1>
+      <p class="lead" id="fail-text"></p>
+      <p class="hint">Details are in <code>/var/log/testard-install.log</code> (press Ctrl+Alt+F2 for a terminal, log in as root).</p>
+      <div class="actions"><button class="primary" data-goto="review">Back</button></div>
+    </section>
+  </main>
+</div>
+<script src="app.js"></script>
+</body>
+</html>

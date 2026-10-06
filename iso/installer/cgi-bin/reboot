@@ -1,0 +1,8 @@
+#!/bin/sh
+# Restarts the computer once the installation is done.
+# shellcheck source=iso/installer/lib.sh
+. ../lib.sh
+require_post
+grep -qx 'done' "$RUN/state" 2>/dev/null || fail "409 Conflict" "the installation hasn't finished"
+( sleep 1; reboot ) >/dev/null 2>&1 &
+reply "200 OK" '{"ok":true}'
