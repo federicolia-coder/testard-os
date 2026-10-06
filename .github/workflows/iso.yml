@@ -6,6 +6,11 @@ on:
     tags: ["v*"]
     paths: ["iso/**", "setup.sh", ".github/workflows/iso.yml"]
   workflow_dispatch:
+    inputs:
+      release:
+        description: "Publish a release for the version in setup.sh"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -24,7 +29,10 @@ jobs:
       - name: Build
         run: |
           VERSION=$(sed -n 's/^VERSION="\(.*\)"$/\1/p' setup.sh)
-          case "$GITHUB_REF" in refs/tags/v*) ;; *) VERSION="$VERSION-dev.$GITHUB_RUN_NUMBER" ;; esac
+          if [ "${{ inputs.release }}" != "true" ] && ! case "$GITHUB_REF" in refs/tags/v*) true ;; *) false ;; esac; then
+            VERSION="$VERSION-dev.$GITHUB_RUN_NUMBER"
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
           docker run --rm -v "$PWD":/src -w /src -e VERSION="$VERSION" alpine:3.22 sh iso/build.sh
 
       - name: Install test (QEMU)
@@ -48,9 +56,9 @@ jobs:
           compression-level: 0
 
       - name: Release
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, 'refs/tags/v') || inputs.release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" out/testard-os-*.iso out/testard-os-*.iso.sha256 \
-            --title "Testard OS ${GITHUB_REF_NAME#v}" --notes-file iso/RELEASE_NOTES.md
+          gh release create "v$VERSION" out/testard-os-*.iso out/testard-os-*.iso.sha256 \
+            --target "$GITHUB_SHA" --title "Testard OS $VERSION" --notes-file iso/RELEASE_NOTES.md
