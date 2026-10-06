@@ -19,6 +19,8 @@ import time
 import pexpect
 
 ISO = sys.argv[1]
+UEFI = "--uefi" in sys.argv[2:]
+OVMF = "/usr/share/ovmf/OVMF.fd"
 WORK = tempfile.mkdtemp(prefix="testard-os-test-")
 DISK = os.path.join(WORK, "disk.qcow2")
 KEY = os.path.join(WORK, "id_ed25519")
@@ -30,17 +32,32 @@ subprocess.run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", KEY, "-C", 
 pubkey = open(KEY + ".pub").read().strip()
 
 kvm = os.path.exists("/dev/kvm")
-qemu = [
-    "qemu-system-x86_64", "-m", "1024", "-smp", "2", "-nographic",
-    "-drive", f"file={DISK},if=virtio,format=qcow2",
-    "-cdrom", ISO, "-boot", "order=c,once=d",
-    "-netdev", f"user,id=n0,hostfwd=tcp:127.0.0.1:{SSH_PORT}-:22,hostfwd=tcp:127.0.0.1:8080-:80,hostfwd=tcp:127.0.0.1:8081-:81",
-    "-device", "virtio-net-pci,netdev=n0",
-] + (["-enable-kvm", "-cpu", "host"] if kvm else [])
+
+def qemu_cmd(with_iso):
+    cmd = [
+        "qemu-system-x86_64", "-m", "1024", "-smp", "2", "-nographic",
+        "-drive", f"file={DISK},if=virtio,format=qcow2",
+        "-netdev", f"user,id=n0,hostfwd=tcp:127.0.0.1:{SSH_PORT}-:22,hostfwd=tcp:127.0.0.1:8080-:80,hostfwd=tcp:127.0.0.1:8081-:81",
+        "-device", "virtio-net-pci,netdev=n0",
+    ]
+    if with_iso:
+        cmd += ["-cdrom", ISO, "-boot", "d"]
+    if UEFI:
+        cmd += ["-bios", OVMF]
+    if kvm:
+        cmd += ["-enable-kvm", "-cpu", "host"]
+    return cmd
+
 
 slow = 1 if kvm else 6
-vm = pexpect.spawn(qemu[0], qemu[1:], encoding="utf-8", codec_errors="replace", timeout=120 * slow)
-vm.logfile_read = sys.stdout
+def start(with_iso):
+    cmd = qemu_cmd(with_iso)
+    p = pexpect.spawn(cmd[0], cmd[1:], encoding="utf-8", codec_errors="replace", timeout=120 * slow)
+    p.logfile_read = sys.stdout
+    return p
+
+
+vm = start(with_iso=True)
 
 
 def step(title):
@@ -52,7 +69,7 @@ def answer(prompt, value):
     vm.sendline(value)
 
 
-step("Boot the live system")
+step(f"Boot the live system ({'UEFI' if UEFI else 'BIOS'})")
 vm.expect("login:", timeout=300 * slow)
 vm.sendline("root")
 vm.expect("testard-install")  # the welcome text
@@ -82,8 +99,10 @@ if i == 1:
     sys.exit("installer failed")
 vm.expect_exact(":~# ")
 
-step("Reboot into the installed system")
-vm.sendline("reboot")
+step("Restart from the disk, without the installer")
+vm.sendline("poweroff")
+vm.expect(pexpect.EOF, timeout=120 * slow)
+vm = start(with_iso=False)
 vm.expect(f"{HOST} login:", timeout=300 * slow)
 
 # First boot runs testard-setup in the background; wait for it over SSH.

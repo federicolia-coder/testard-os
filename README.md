@@ -9,7 +9,21 @@
 
 # Testard OS
 
-One script that turns a fresh **Alpine**, **Debian** or **Ubuntu** install into a lean, locked-down server for a homelab or a VPS. It isn't a new distribution: you keep your distribution's packages and security updates, and the script sets up what you'd otherwise do by hand.
+A lean server operating system for your homelab or a VPS, based on [Alpine Linux](https://alpinelinux.org). Put it on a USB stick, install it on any PC, and you get a server that uses about 85 MB of memory with Docker running: keys-only SSH, a firewall, daily security updates and a status screen at login, ready from the first boot.
+
+## Install from a USB stick
+
+1. Download `testard-os-<version>-x86_64.iso` from [Releases](https://github.com/federicolia-coder/testard-os/releases/latest).
+2. Write it to a USB stick (all data on the stick is erased) with [balenaEtcher](https://etcher.balena.io), or Rufus in "DD image" mode, or on Linux and macOS: `sudo dd if=testard-os-*.iso of=/dev/sdX bs=4M`.
+3. Boot the PC from the stick, log in as `root` (no password on the live system) and type `testard-install`.
+4. Answer the questions: keyboard, server name, time zone, your user and password, SSH keys (pasted or from your GitHub account), Docker, ports and, if you want, your Testard agent key. Then pick the disk; everything on it is erased.
+5. Remove the stick and restart. The first boot finishes the setup in about a minute; log in with your user.
+
+Works on 64-bit PCs (x86_64) with BIOS or UEFI and a wired network. Every build is installed and checked in a virtual machine by [CI](.github/workflows/iso.yml) before it's published.
+
+## Or set up an existing server
+
+Already have Alpine, Debian or Ubuntu running, for example on a VPS? The same setup runs as a script:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/federicolia-coder/testard-os/main/setup.sh -o setup.sh
@@ -32,13 +46,13 @@ It asks a few questions, shows what it's about to change, and waits for a yes.
 | **Login screen** | IP, uptime, memory, disk, running containers and whether a reboot is needed. |
 | **Testard** | Optional: installs the open-source [Testard agent](https://github.com/federicolia-coder/testard-agent), so the server shows up in [Testard](https://platform.testardstudios.it) next to your other servers and cloud accounts. |
 
-## Which base to pick
+## Which base to pick (for the script)
 
 - **Alpine**: the lightest. About 50 MB of memory in use at idle and under 200 MB on disk. Best for small VPSs, old PCs and Raspberry Pis. Software built for Debian or Ubuntu may not run directly; inside Docker it does.
 - **Debian**: a little heavier (about 100 to 150 MB at idle), with the widest software support. The safe choice if you're unsure.
 - **Ubuntu Server**: like Debian, and what many VPS providers install by default.
 
-Supported: Alpine 3.20 and later, Debian 12 and 13, Ubuntu 22.04 and 24.04. Tested end to end on Ubuntu 24.04 so far; Alpine and Debian runs on real machines are next.
+The script supports Alpine 3.20 and later, Debian 12 and 13, Ubuntu 22.04 and 24.04.
 
 ## Without questions
 
@@ -85,9 +99,13 @@ Every file it writes starts with `Written by testard-setup`:
 | Login screen | `/etc/profile.d/testard-motd.sh` |
 | Testard agent | `sudo testard-agent uninstall` |
 
+## Building the ISO
+
+`iso/build.sh` builds it with Alpine's `mkimage` inside an Alpine container: `docker run --rm -v "$PWD":/src -w /src alpine:3.22 sh iso/build.sh`. `iso/test/install-test.py` installs the result in QEMU and checks it.
+
 ## Coming next
 
-A ready-made image (ISO and Raspberry Pi) built on Alpine with all of this already in place.
+Raspberry Pi images, and Wi-Fi during installation.
 
 ## License
 
