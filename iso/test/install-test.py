@@ -56,7 +56,7 @@ step("Boot the live system")
 vm.expect("login:", timeout=300 * slow)
 vm.sendline("root")
 vm.expect("testard-install")  # the welcome text
-vm.expect(r"[#$] $")
+vm.expect_exact(":~# ")
 
 step("Run the installer")
 vm.sendline("testard-install")
@@ -76,11 +76,11 @@ vm.expect(r"Type the disk name \((\w+)\)")
 vm.sendline(vm.match.group(1))
 i = vm.expect(["Testard OS is installed", "The installation stopped"], timeout=900 * slow)
 if i == 1:
-    vm.expect(r"[#$] $")
+    vm.expect_exact(":~# ")
     vm.sendline("tail -n 40 /var/log/testard-install.log")
-    vm.expect(r"[#$] $")
+    vm.expect_exact(":~# ")
     sys.exit("installer failed")
-vm.expect(r"[#$] $")
+vm.expect_exact(":~# ")
 
 step("Reboot into the installed system")
 vm.sendline("reboot")

@@ -44,6 +44,13 @@ ca-certificates
 tzdata
 EOF
 
+makefile root:root 0644 "$tmp/etc/issue" <<'EOF'
+
+Testard OS (Alpine Linux) \r on \m (\l)
+Log in as root, no password needed. Then type: testard-install
+
+EOF
+
 makefile root:root 0644 "$tmp/etc/motd" <<EOF
 
   Welcome to Testard OS, a lean server OS based on Alpine Linux.
