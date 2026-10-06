@@ -69,7 +69,7 @@ list_disks() { # one line per disk: name size-in-GB model
 		size=$(cat "$d/size")
 		[ "$size" -gt 0 ] || continue
 		gb=$(awk -v s="$size" 'BEGIN {printf "%.0f", s * 512 / 1000000000}')
-		model=$(tr -s ' ' < "$d/device/model" 2>/dev/null | sed 's/ *$//' || true)
+		model=$(tr -s ' ' 2>/dev/null < "$d/device/model" | sed 's/ *$//' || true)
 		printf '%s %s %s\n' "$n" "$gb" "$model"
 	done
 }
@@ -204,6 +204,11 @@ read_answers() { # KEY=value lines; read as data, never executed
 }
 
 if [ -n "$ANSWERS" ]; then read_answers; else ask_answers_in_terminal; fi
+
+# If anything below stops the script unexpectedly, say so instead of
+# leaving the graphical installer waiting.
+finished=0
+trap '[ "$finished" = 1 ] || { mkdir -p /run/testard; grep -q "^failed" "$STATE" 2>/dev/null || printf "failed|Something went wrong (see %s)\n" "$LOG" > "$STATE"; }' EXIT
 
 # ── Configure the live system, then copy it to the disk ──────────────────
 
@@ -346,7 +351,6 @@ ADMIN=$(sed -n 's/^ADMIN=//p' /etc/testard/setup.conf)
 EOF
 chmod 0755 /etc/local.d/testard-firstboot.start
 rc-update add local default >/dev/null 2>&1
-[ "$CONTAINERS" = none ] || rc-update add docker default >/dev/null 2>&1
 
 # The installed system's /etc: this live system's, minus what only the live
 # system needs, plus the server's packages. setup-disk installs from it.
@@ -378,6 +382,7 @@ ERASE_DISKS="/dev/$DISK" setup-disk -o "$ovl" -m sys "/dev/$DISK" >> "$LOG" 2>&1
 rm -f "$ovl"
 
 mkdir -p /run/testard
+finished=1
 echo 'done' > "$STATE"
 if [ -z "$ANSWERS" ]; then
 	echo
