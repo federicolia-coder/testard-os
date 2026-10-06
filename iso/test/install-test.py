@@ -41,7 +41,7 @@ kvm = os.path.exists("/dev/kvm")
 
 def qemu_cmd(with_iso):
     cmd = [
-        "qemu-system-x86_64", "-m", "1536", "-smp", "2",
+        "qemu-system-x86_64", "-m", "2048", "-smp", "2",
         "-display", "none", "-vga", "std", "-serial", "stdio",
         "-monitor", f"unix:{MONITOR},server,nowait",
         "-device", "qemu-xhci", "-device", "usb-tablet", "-device", "usb-kbd",

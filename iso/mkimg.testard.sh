@@ -13,6 +13,9 @@ profile_testard() {
 	# Show the boot menu and a login prompt on the serial port too, for
 	# headless machines and for testing in a virtual machine.
 	kernel_cmdline="$kernel_cmdline console=tty0 console=ttyS0,115200"
+	# The live system runs from RAM; let it use most of it (the graphical
+	# installer needs room). tmpfs only takes what's actually written.
+	kernel_cmdline="$kernel_cmdline rootflags=size=85%"
 	syslinux_serial="0 115200"
 	# On the image, so installing works without a network connection.
 	apks="$apks nftables sudo curl ca-certificates tzdata openssh chrony
