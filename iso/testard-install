@@ -138,6 +138,9 @@ echo
 say "${B}Installing…${R} ${DIM}(this takes a few minutes)${R}"
 
 release=$(cut -d. -f1,2 /etc/alpine-release)
+mirror="https://dl-cdn.alpinelinux.org/alpine/v$release"
+# The package repository on the USB stick; setup-alpine drops it, so keep it.
+media_repo=$(grep '^/media/' /etc/apk/repositories | head -n 1 || true)
 answers=$(mktemp)
 cat > "$answers" <<EOF
 KEYMAPOPTS="$KB $KBV"
@@ -152,7 +155,7 @@ iface eth0 inet dhcp
 DNSOPTS=none
 TIMEZONEOPTS="$TZ_NAME"
 PROXYOPTS=none
-APKREPOSOPTS="-c https://dl-cdn.alpinelinux.org/alpine/v$release/main"
+APKREPOSOPTS="$mirror/main"
 USEROPTS=none
 SSHDOPTS=openssh
 NTPOPTS=chrony
@@ -164,6 +167,13 @@ EOF
 # -e: no root password for now; root is locked below.
 setup-alpine -e -f "$answers" > /var/log/testard-install.log 2>&1 || die "setup-alpine failed (see /var/log/testard-install.log)"
 rm -f "$answers"
+
+# Packages from the USB stick first (works offline), then Alpine's mirror.
+{
+	[ -z "$media_repo" ] || echo "$media_repo"
+	echo "$mirror/main"
+	echo "$mirror/community"
+} > /etc/apk/repositories
 
 # Admin user: account and password are in /etc, so they're copied to the disk.
 id "$ADMIN" >/dev/null 2>&1 || adduser -D -s /bin/sh "$ADMIN"
@@ -215,6 +225,8 @@ LOG=/var/log/testard-firstboot.log
 ADMIN=$(sed -n 's/^ADMIN=//p' /etc/testard/setup.conf)
 {
 	echo "== $(date)"
+	# The USB stick's repository was only needed to install.
+	sed -i '/^\/media\//d' /etc/apk/repositories
 	install -m 0755 /etc/testard/testard-setup /usr/local/sbin/testard-setup
 	home=$(awk -F: -v u="$ADMIN" '$1==u {print $6}' /etc/passwd)
 	if [ -n "$home" ] && [ ! -d "$home" ]; then
