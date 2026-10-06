@@ -149,7 +149,9 @@ for name, (cmd, expected) in checks.items():
         failed.append(name)
 
 # The firewall blocks a port that isn't open (81) but not one that is (80).
-remote(sudo + "sh -c 'cd /tmp && (nohup busybox httpd -f -p 80 >/dev/null 2>&1 &) && (nohup busybox httpd -f -p 81 >/dev/null 2>&1 &)'", check=False)
+serve = "while :; do printf 'HTTP/1.0 200 OK\\r\\n\\r\\nok' | nc -l -p {0} >/dev/null 2>&1; done"
+for port in (80, 81):
+    remote(sudo + f"sh -c \"nohup sh -c \\\"{serve.format(port)}\\\" >/dev/null 2>&1 &\"", check=False)
 time.sleep(2)
 for port, should_answer in ((8080, True), (8081, False)):
     r = subprocess.run(["curl", "-s", "-m", "5", "-o", "/dev/null", "-w", "%{http_code}", f"http://127.0.0.1:{port}/"],
