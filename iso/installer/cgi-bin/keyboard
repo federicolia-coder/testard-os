@@ -6,7 +6,10 @@
 require_post
 read_form
 layout=$(field layout)
-if ! printf "%s" "$layout" | grep -Eq "^[a-z]{2,3}$" || [ ! -d "/usr/share/bkeymaps/$layout" ]; then fail "400 Bad Request" "unknown keyboard layout"; fi
+# us is the built-in default and has no keymap file.
+if [ "$layout" != us ] && { ! printf "%s" "$layout" | grep -Eq "^[a-z]{2,3}$" || [ ! -d "/usr/share/bkeymaps/$layout" ]; }; then
+	fail "400 Bad Request" "unknown keyboard layout"
+fi
 mkdir -p "$RUN"
 printf '%s\n' "$layout" > "$RUN/xkb"
 setup-keymap "$layout" "$layout" >/dev/null 2>&1 || true

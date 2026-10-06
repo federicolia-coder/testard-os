@@ -49,7 +49,7 @@ valid_agent_key() { printf '%s' "$1" | grep -Eq '^tsk_[A-Za-z0-9_-]{43}$'; }
 valid_github() { printf '%s' "$1" | grep -Eq '^[A-Za-z0-9-]{1,39}$'; }
 valid_pubkey() { printf '%s' "$1" | grep -Eq '^(ssh-(ed25519|rsa)|ecdsa-sha2-nistp(256|384|521)|sk-(ssh-ed25519|ecdsa-sha2-nistp256)@openssh\.com) [A-Za-z0-9+/=]+( [^ ]*)*$'; }
 valid_ports() { [ -z "$1" ] || printf '%s' "$1" | grep -Eq '^[0-9]{1,5}(-[0-9]{1,5})?(/(tcp|udp))?(,[0-9]{1,5}(-[0-9]{1,5})?(/(tcp|udp))?)*$'; }
-valid_keymap() { [ -d "/usr/share/bkeymaps/$1" ]; }
+valid_keymap() { [ "$1" = us ] || { printf '%s' "$1" | grep -Eq '^[a-z]{2,3}$' && [ -d "/usr/share/bkeymaps/$1" ]; }; } # us is the built-in default
 
 # ── Disks ────────────────────────────────────────────────────────────────
 
