@@ -51,7 +51,10 @@ Log in as root, no password needed. Then type: testard-install
 
 EOF
 
+esc=$(printf '\033')
 makefile root:root 0644 "$tmp/etc/motd" <<EOF
+
+  ${esc}[1mtestard${esc}[1;34m.${esc}[0m ${esc}[1;32mOS${esc}[0m
 
   Welcome to Testard OS, a lean server OS based on Alpine Linux.
 

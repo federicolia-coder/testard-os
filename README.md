@@ -1,8 +1,8 @@
 <p>
   <a href="https://platform.testardstudios.it">
     <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="assets/testard-wordmark-on-dark.svg">
-      <img src="assets/testard-wordmark.svg" alt="testard." width="220">
+      <source media="(prefers-color-scheme: dark)" srcset="assets/testard-os-logo-on-dark.svg">
+      <img src="assets/testard-os-logo.svg" alt="testard. OS" width="300">
     </picture>
   </a>
 </p>

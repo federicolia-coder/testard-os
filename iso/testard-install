@@ -232,6 +232,7 @@ ADMIN=$(sed -n 's/^ADMIN=//p' /etc/testard/setup.conf)
 	echo "== $(date)"
 	# The USB stick's repository was only needed to install.
 	sed -i '/^\/media\//d' /etc/apk/repositories
+	mkdir -p /usr/local/sbin
 	install -m 0755 /etc/testard/testard-setup /usr/local/sbin/testard-setup
 	home=$(awk -F: -v u="$ADMIN" '$1==u {print $6}' /etc/passwd)
 	if [ -n "$home" ] && [ ! -d "$home" ]; then
