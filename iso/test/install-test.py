@@ -236,6 +236,7 @@ checks = {
     "docker compose": ("docker compose version", "Docker Compose"),
     "testard-setup installed": ("testard-setup --version", "testard-setup"),
     "login screen": ("cat /etc/profile.d/testard-motd.sh", "testard"),
+    "no installer packages on the server": ("apk info -e firefox-esr cage mesa-dri-gallium || echo none-installed", "none-installed"),
     "mode saved": ("cat /etc/testard/setup.conf", f"PROFILE={MODE}"),
     "boot menu named": (sudo + "cat /boot/extlinux.conf /boot/grub/grub.cfg 2>/dev/null", "Testard OS"),
     "no automatic login": ("grep ^tty1 /etc/inittab", "tty1::respawn:/sbin/getty 38400 tty1"),

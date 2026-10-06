@@ -260,12 +260,13 @@ printf '%s:%s\n' "$ADMIN" "$PW" | chpasswd >> "$LOG" 2>&1
 PW=""
 passwd -l root >/dev/null 2>&1 || true
 
-progress 35 "Adding packages"
+# Packages for the installed system. They're installed straight onto the
+# disk by setup-disk (from the USB stick), not into this live system's RAM.
 pkgs="nftables sudo curl ca-certificates tzdata openssh-server"
 [ "$CONTAINERS" = none ] || pkgs="$pkgs docker docker-cli-compose"
 [ "$MODE" = server ] || pkgs="$pkgs avahi dbus"
-# shellcheck disable=SC2086
-apk add --quiet $pkgs >> "$LOG" 2>&1 || die "couldn't install packages (see $LOG)"
+# Only the live system needs these (the graphical installer).
+live_only="firefox-esr cage seatd seatd-launch mesa-dri-gallium xkeyboard-config font-dejavu busybox-extras"
 
 # sudo for the admin user right away, not only after first boot.
 mkdir -p /etc/sudoers.d
@@ -347,19 +348,34 @@ chmod 0755 /etc/local.d/testard-firstboot.start
 rc-update add local default >/dev/null 2>&1
 [ "$CONTAINERS" = none ] || rc-update add docker default >/dev/null 2>&1
 
-# Leave the live system's extras behind: the installed system is a server.
-cat > /etc/motd <<EOF
+# The installed system's /etc: this live system's, minus what only the live
+# system needs, plus the server's packages. setup-disk installs from it.
+progress 50 "Preparing the installed system"
+stage=$(mktemp -d)
+lbu package - 2>>"$LOG" | tar -C "$stage" -zx || die "couldn't package the configuration (see $LOG)"
+{
+	awk -v drop="$live_only" 'BEGIN { n = split(drop, d, " "); for (i = 1; i <= n; i++) skip[d[i]] = 1 } NF && !($1 in skip)' /etc/apk/world
+	for p in $pkgs; do echo "$p"; done
+} | sort -u > "$stage/etc/apk/world"
+cat > "$stage/etc/motd" <<EOF
 
   Testard OS is finishing its setup (log: /var/log/testard-firstboot.log).
 
 EOF
-rm -rf /etc/profile.d/testard-live.sh /etc/testard/live-login /etc/testard/installer /etc/testard/testard-gui /etc/firefox
-sed -i 's#^tty1::respawn:.*#tty1::respawn:/sbin/getty 38400 tty1#' /etc/inittab
-printf '\033[H\033[2J\nTestard OS (Alpine Linux) \\r on \\m (\\l)\n\n' > /etc/issue
+rm -rf "$stage/etc/profile.d/testard-live.sh" "$stage/etc/testard/live-login" "$stage/etc/testard/installer" \
+	"$stage/etc/testard/testard-gui" "$stage/etc/firefox"
+sed -i 's#^tty1::respawn:.*#tty1::respawn:/sbin/getty 38400 tty1#' "$stage/etc/inittab"
+printf '\033[H\033[2J\nTestard OS (Alpine Linux) \\r on \\m (\\l)\n\n' > "$stage/etc/issue"
+ovl="$stage.apkovl.tar.gz"
+# Top-level names only (etc, …), the way lbu writes them.
+# shellcheck disable=SC2046
+tar -C "$stage" -czf "$ovl" $(ls -A "$stage") || die "couldn't package the configuration"
+rm -rf "$stage"
 
 progress 55 "Copying Testard OS to $DISK"
-ERASE_DISKS="/dev/$DISK" setup-disk -m sys "/dev/$DISK" >> "$LOG" 2>&1 \
+ERASE_DISKS="/dev/$DISK" setup-disk -o "$ovl" -m sys "/dev/$DISK" >> "$LOG" 2>&1 \
 	|| die "couldn't install to $DISK (see $LOG)"
+rm -f "$ovl"
 
 mkdir -p /run/testard
 echo 'done' > "$STATE"
