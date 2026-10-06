@@ -369,6 +369,10 @@ EOF
 rm -rf "$stage/etc/profile.d/testard-live.sh" "$stage/etc/testard/live-login" "$stage/etc/testard/installer" \
 	"$stage/etc/testard/testard-gui" "$stage/etc/firefox"
 sed -i 's#^tty1::respawn:.*#tty1::respawn:/sbin/getty 38400 tty1#' "$stage/etc/inittab"
+if [ "$CONTAINERS" = docker ]; then # mounted at boot, before Docker starts
+	mkdir -p "$stage/etc/runlevels/boot"
+	ln -sf /etc/init.d/cgroups "$stage/etc/runlevels/boot/cgroups"
+fi
 printf '\033[H\033[2J\nTestard OS (Alpine Linux) \\r on \\m (\\l)\n\n' > "$stage/etc/issue"
 ovl="$stage.apkovl.tar.gz"
 # Top-level names only (etc, …), the way lbu writes them.

@@ -685,7 +685,11 @@ fi
 if [ "$CONTAINERS" != none ]; then
   step "Containers: $CONTAINERS"
   case "$FAMILY:$CONTAINERS" in
-    alpine:docker) pkg_install docker docker-cli-compose; enable_service docker ;;
+    # cgroups in the boot runlevel, so it's mounted before Docker starts.
+    alpine:docker) pkg_install docker docker-cli-compose
+      [ "$INIT" != openrc ] || run rc-update add cgroups boot || true
+      if openrc_running; then run rc-service cgroups start || true; fi
+      enable_service docker ;;
     alpine:podman) pkg_install podman podman-compose ;;
     debian:docker)
       if pkg_available docker-compose-v2; then compose=docker-compose-v2; else compose=docker-compose; fi

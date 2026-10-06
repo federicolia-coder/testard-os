@@ -57,8 +57,9 @@ jobs:
           gh release view ci-latest >/dev/null 2>&1 || \
             gh release create ci-latest --prerelease --title "Latest test build" \
               --notes "The ISO and screenshots from the latest CI run on main. Not a release: use the latest numbered version."
-          cp out/testard-os-*.iso out/testard-os-latest-x86_64.iso
-          gh release upload ci-latest out/testard-os-latest-x86_64.iso $(ls out/screens/*.png 2>/dev/null) --clobber
+          mkdir -p "$RUNNER_TEMP/latest"
+          cp out/testard-os-*-x86_64.iso "$RUNNER_TEMP/latest/testard-os-latest-x86_64.iso"
+          gh release upload ci-latest "$RUNNER_TEMP/latest/testard-os-latest-x86_64.iso" $(ls out/screens/*.png 2>/dev/null) --clobber
 
       - uses: actions/upload-artifact@v5
         with:

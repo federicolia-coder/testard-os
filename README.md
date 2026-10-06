@@ -15,11 +15,17 @@ A lean server operating system for your homelab or a VPS, based on [Alpine Linux
 
 1. Download `testard-os-<version>-x86_64.iso` from [Releases](https://github.com/federicolia-coder/testard-os/releases/latest).
 2. Write it to a USB stick (all data on the stick is erased) with [balenaEtcher](https://etcher.balena.io), or Rufus in "DD image" mode, or on Linux and macOS: `sudo dd if=testard-os-*.iso of=/dev/sdX bs=4M`.
-3. Boot the PC from the stick, log in as `root` (no password on the live system) and type `testard-install`.
-4. Answer the questions: keyboard, server name, time zone, your user and password, SSH keys (pasted or from your GitHub account), Docker, ports and, if you want, your Testard agent key. Then pick the disk; everything on it is erased.
+3. Boot the PC from the stick. The installer opens on the screen by itself.
+4. Pick how you'll use it, **Homelab** or **Server**, then answer a few questions: server name, time zone, your user and password, SSH keys (pasted or from your GitHub account), Docker, ports and, if you want, your Testard agent key. Then pick the disk; everything on it is erased.
 5. Remove the stick and restart. The first boot finishes the setup in about a minute; log in with your user.
 
-Works on 64-bit PCs (x86_64) with BIOS or UEFI and a wired network. Every build is installed and checked in a virtual machine by [CI](.github/workflows/iso.yml) before it's published.
+| | Homelab | Server |
+| --- | --- | --- |
+| Who can connect | Only devices on your network (and Tailscale) | Anyone, on the ports you open |
+| Name | Answers as `name.local` | Just its IP or your DNS |
+| Docker | On by default | Off by default |
+
+Needs a 64-bit PC (x86_64) with BIOS or UEFI, 2 GB of memory for the installer and a wired network. If the screen can't show the graphical installer, a text one takes over: log in as `root` (no password) and type `testard-install`. Every build is installed twice in a virtual machine by [CI](.github/workflows/iso.yml), once with each installer, before it's published.
 
 ## Or set up an existing server
 
