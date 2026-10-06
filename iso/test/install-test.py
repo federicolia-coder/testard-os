@@ -154,6 +154,7 @@ checks = {
     "docker compose": ("docker compose version", "Docker Compose"),
     "testard-setup installed": ("testard-setup --version", "testard-setup"),
     "login screen": ("cat /etc/profile.d/testard-motd.sh", "testard"),
+    "no automatic login": ("grep ^tty1 /etc/inittab", "tty1::respawn:/sbin/getty 38400 tty1"),
     "first-boot files removed": ("ls /etc/local.d/ /etc/testard/", "setup.conf"),
 }
 failed = []

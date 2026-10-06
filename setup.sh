@@ -14,7 +14,7 @@
 
 set -eu
 
-VERSION="0.1.0"
+VERSION="0.1.1"
 REPO_RAW="https://raw.githubusercontent.com/federicolia-coder/testard-os/main"
 AGENT_RAW="https://raw.githubusercontent.com/federicolia-coder/testard-agent/main"
 LOG=/var/log/testard-setup.log

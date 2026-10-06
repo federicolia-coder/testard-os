@@ -261,7 +261,9 @@ cat > /etc/motd <<EOF
   Testard OS is finishing its setup (log: /var/log/testard-firstboot.log).
 
 EOF
-rm -f /etc/profile.d/testard-live.sh
+rm -f /etc/profile.d/testard-live.sh /etc/testard/live-login
+# The installed system asks for a login on the screen, like any server.
+sed -i 's#^tty1::respawn:.*#tty1::respawn:/sbin/getty 38400 tty1#' /etc/inittab
 cat > /etc/issue <<'EOF'
 
 Testard OS (Alpine Linux) \r on \m (\l)

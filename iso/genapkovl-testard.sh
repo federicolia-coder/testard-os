@@ -47,8 +47,33 @@ EOF
 makefile root:root 0644 "$tmp/etc/issue" <<'EOF'
 
 Testard OS (Alpine Linux) \r on \m (\l)
-Log in as root, no password needed. Then type: testard-install
+Log in as root (no password), then type: testard-install
 
+EOF
+
+# On the screen (tty1) the live system logs in by itself, so the first thing
+# you see is how to start the installer. testard-install puts the normal
+# login back before copying /etc to the disk.
+makefile root:root 0755 "$tmp/etc/testard/live-login" <<'EOF'
+#!/bin/sh
+exec /bin/login -f root
+EOF
+makefile root:root 0644 "$tmp/etc/inittab" <<'EOF'
+# /etc/inittab (Testard OS live system)
+
+::sysinit:/sbin/openrc sysinit
+::sysinit:/sbin/openrc boot
+::wait:/sbin/openrc default
+
+tty1::respawn:/sbin/getty -n -l /etc/testard/live-login 38400 tty1
+tty2::respawn:/sbin/getty 38400 tty2
+tty3::respawn:/sbin/getty 38400 tty3
+
+# Put a getty on the serial port
+#ttyS0::respawn:/sbin/getty -L 115200 ttyS0 vt100
+
+::ctrlaltdel:/sbin/reboot
+::shutdown:/sbin/openrc shutdown
 EOF
 
 esc=$(printf '\033')
@@ -58,7 +83,7 @@ makefile root:root 0644 "$tmp/etc/motd" <<EOF
 
   Welcome to Testard OS, a lean server OS based on Alpine Linux.
 
-  To install it on this machine's disk, type:  testard-install
+  To install it on this machine's disk, type:  ${esc}[1mtestard-install${esc}[0m and press Enter.
 
 EOF
 
