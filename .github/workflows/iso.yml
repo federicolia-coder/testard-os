@@ -46,7 +46,7 @@ jobs:
 
       - name: Install test, UEFI, graphical installer (QEMU)
         timeout-minutes: 30
-        run: python3 iso/test/install-test.py out/testard-os-*.iso --uefi --gui
+        run: SCREENSHOT_DIR="$RUNNER_TEMP/screens" python3 iso/test/install-test.py out/testard-os-*.iso --uefi --gui
 
       - name: Publish the test build
         if: always() && github.ref == 'refs/heads/main'
@@ -59,14 +59,12 @@ jobs:
               --notes "The ISO and screenshots from the latest CI run on main. Not a release: use the latest numbered version."
           mkdir -p "$RUNNER_TEMP/latest"
           cp out/testard-os-*-x86_64.iso "$RUNNER_TEMP/latest/testard-os-latest-x86_64.iso"
-          gh release upload ci-latest "$RUNNER_TEMP/latest/testard-os-latest-x86_64.iso" $(ls out/screens/*.png 2>/dev/null) --clobber
+          gh release upload ci-latest "$RUNNER_TEMP/latest/testard-os-latest-x86_64.iso" $(ls "$RUNNER_TEMP"/screens/*.png 2>/dev/null) --clobber
 
       - uses: actions/upload-artifact@v5
         with:
           name: testard-os-iso
-          path: |
-            out/testard-os-*
-            out/screens/*
+          path: out/testard-os-*
           retention-days: 14
           compression-level: 0
 
