@@ -17,7 +17,11 @@ apk add --no-cache alpine-sdk alpine-conf syslinux xorriso squashfs-tools \
 	grub grub-efi mtools dosfstools git fakeroot
 
 # mkimage signs the image's package index with an abuild key.
-[ -n "$(ls ~/.abuild/*.rsa 2>/dev/null)" ] || abuild-keygen -a -i -n
+# (-i would install it with doas; as root we copy it ourselves.)
+if ! ls ~/.abuild/*.rsa >/dev/null 2>&1; then
+	abuild-keygen -a -n
+	cp ~/.abuild/*.rsa.pub /etc/apk/keys/
+fi
 
 [ -d /tmp/aports ] || git clone --depth 1 --branch "$ALPINE-stable" \
 	https://gitlab.alpinelinux.org/alpine/aports.git /tmp/aports
