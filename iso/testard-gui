@@ -21,22 +21,39 @@ export XDG_RUNTIME_DIR="$RUN/xdg"
 mkdir -p "$XDG_RUNTIME_DIR"
 chmod 0700 "$XDG_RUNTIME_DIR"
 
+# First with the graphics card; if that can't start (no 3D acceleration,
+# e.g. in VirtualBox or VMware), again drawing everything in software.
+software=""
+: > "$RUN/gui.log"
 started=$(date +%s)
 while :; do
 	rm -f "$RUN/restart-screen"
 	layout=$(cat "$RUN/xkb" 2>/dev/null || echo us)
 	rm -rf "$RUN/firefox"
 	mkdir -p "$RUN/firefox"
-	XKB_DEFAULT_LAYOUT="$layout" MOZ_ENABLE_WAYLAND=1 seatd-launch -- cage -s -- \
-		firefox-esr --kiosk --no-remote --profile "$RUN/firefox" "http://127.0.0.1:8080/" > "$RUN/gui.log" 2>&1
+	attempt=$(date +%s)
+	if [ -n "$software" ]; then
+		set -- env WLR_RENDERER=pixman LIBGL_ALWAYS_SOFTWARE=1 MOZ_WEBRENDER=1 MOZ_ACCELERATED=0
+	else
+		set -- env
+	fi
+	"$@" XKB_DEFAULT_LAYOUT="$layout" MOZ_ENABLE_WAYLAND=1 seatd-launch -- cage -s -- \
+		firefox-esr --kiosk --no-remote --profile "$RUN/firefox" "http://127.0.0.1:8080/" >> "$RUN/gui.log" 2>&1
 	# The keyboard layout changed: start again with it.
 	[ -f "$RUN/restart-screen" ] && continue
+	# It stopped right away with the graphics card: try in software.
+	if [ -z "$software" ] && [ $(( $(date +%s) - attempt )) -lt 15 ]; then
+		software=1
+		echo "== the graphics card didn't work; drawing in software" >> "$RUN/gui.log"
+		started=$(date +%s)
+		continue
+	fi
 	break
 done
 
 clear
 if [ $(( $(date +%s) - started )) -lt 15 ]; then
-	echo "The graphical installer couldn't start on this screen (details: $RUN/gui.log)."
+	echo "The graphical installer couldn't start on this screen (to see why: cat $RUN/gui.log)."
 else
 	echo "The graphical installer closed."
 fi

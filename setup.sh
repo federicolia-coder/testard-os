@@ -15,7 +15,7 @@
 set -eu
 umask 022 # files written below must never be group or world writable
 
-VERSION="0.2.0"
+VERSION="0.2.1"
 REPO_RAW="https://raw.githubusercontent.com/federicolia-coder/testard-os/main"
 AGENT_RAW="https://raw.githubusercontent.com/federicolia-coder/testard-agent/main"
 LOG=/var/log/testard-setup.log

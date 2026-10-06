@@ -42,7 +42,9 @@ kvm = os.path.exists("/dev/kvm")
 def qemu_cmd(with_iso):
     cmd = [
         "qemu-system-x86_64", "-m", "2048", "-smp", "2",
-        "-display", "none", "-vga", "std", "-serial", "stdio",
+        # The graphical run uses VMware's virtual card without 3D, as in
+        # VirtualBox and VMware: the installer must fall back to software.
+        "-display", "none", "-vga", "vmware" if GUI else "std", "-serial", "stdio",
         "-monitor", f"unix:{MONITOR},server,nowait",
         "-device", "qemu-xhci", "-device", "usb-tablet", "-device", "usb-kbd",
         "-drive", f"file={DISK},if=virtio,format=qcow2",
@@ -132,7 +134,7 @@ if GUI:
         sys.exit("the graphical installer's backend didn't start")
     time.sleep(20)  # let cage and cog draw the page
     colors = screenshot("welcome")
-    vm.sendline("cat /run/testard/gui.log | tail -n 20; pgrep -l cage; pgrep -l firefox")
+    vm.sendline("grep -c 'drawing in software' /run/testard/gui.log; tail -n 5 /run/testard/gui.log; pgrep -l cage; pgrep -l firefox")
     vm.expect_exact(":~# ")
     if colors < 4:
         sys.exit("the graphical installer didn't show anything on the screen")
