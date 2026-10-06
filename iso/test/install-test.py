@@ -1,0 +1,170 @@
+#!/usr/bin/env python3
+"""End-to-end test of the Testard OS ISO in QEMU, driven over the serial port.
+
+Boots the ISO, answers testard-install, reboots from the new disk, waits for
+the first-boot setup, then checks the result over SSH.
+
+    python3 iso/test/install-test.py out/testard-os-*.iso
+
+Needs qemu-system-x86_64, ssh, ssh-keygen and python3-pexpect. Uses KVM when
+/dev/kvm is there; without it, expect it to take a long time.
+"""
+
+import os
+import subprocess
+import sys
+import tempfile
+import time
+
+import pexpect
+
+ISO = sys.argv[1]
+WORK = tempfile.mkdtemp(prefix="testard-os-test-")
+DISK = os.path.join(WORK, "disk.qcow2")
+KEY = os.path.join(WORK, "id_ed25519")
+USER, PASSWORD, HOST = "mario", "correct-horse-1", "lab-ci"
+SSH_PORT = 2222
+
+subprocess.run(["qemu-img", "create", "-q", "-f", "qcow2", DISK, "8G"], check=True)
+subprocess.run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", KEY, "-C", "ci@test"], check=True)
+pubkey = open(KEY + ".pub").read().strip()
+
+kvm = os.path.exists("/dev/kvm")
+qemu = [
+    "qemu-system-x86_64", "-m", "1024", "-smp", "2", "-nographic",
+    "-drive", f"file={DISK},if=virtio,format=qcow2",
+    "-cdrom", ISO, "-boot", "order=c,once=d",
+    "-netdev", f"user,id=n0,hostfwd=tcp:127.0.0.1:{SSH_PORT}-:22,hostfwd=tcp:127.0.0.1:8080-:80,hostfwd=tcp:127.0.0.1:8081-:81",
+    "-device", "virtio-net-pci,netdev=n0",
+] + (["-enable-kvm", "-cpu", "host"] if kvm else [])
+
+slow = 1 if kvm else 6
+vm = pexpect.spawn(qemu[0], qemu[1:], encoding="utf-8", codec_errors="replace", timeout=120 * slow)
+vm.logfile_read = sys.stdout
+
+
+def step(title):
+    print(f"\n\n===== {title} =====\n", flush=True)
+
+
+def answer(prompt, value):
+    vm.expect_exact(prompt)
+    vm.sendline(value)
+
+
+step("Boot the live system")
+vm.expect("login:", timeout=300 * slow)
+vm.sendline("root")
+vm.expect("testard-install")  # the welcome text
+vm.expect(r"[#$] $")
+
+step("Run the installer")
+vm.sendline("testard-install")
+answer("Keyboard layout", "us")
+answer("Server name", HOST)
+answer("Time zone", "")
+answer("Your user name", USER)
+answer("Password for", PASSWORD)
+answer("Same password again", PASSWORD)
+answer("GitHub username", "")
+answer("Or paste a public SSH key", pubkey)
+answer("Container engine", "docker")
+answer("Ports to open besides SSH", "80")
+answer("Testard agent key", "")
+answer("Disk to install on", "")
+vm.expect(r"Type the disk name \((\w+)\)")
+vm.sendline(vm.match.group(1))
+i = vm.expect(["Testard OS is installed", "The installation stopped"], timeout=900 * slow)
+if i == 1:
+    vm.expect(r"[#$] $")
+    vm.sendline("tail -n 40 /var/log/testard-install.log")
+    vm.expect(r"[#$] $")
+    sys.exit("installer failed")
+vm.expect(r"[#$] $")
+
+step("Reboot into the installed system")
+vm.sendline("reboot")
+vm.expect(f"{HOST} login:", timeout=300 * slow)
+
+# First boot runs testard-setup in the background; wait for it over SSH.
+step("Wait for the first-boot setup")
+ssh = ["ssh", "-i", KEY, "-p", str(SSH_PORT), "-o", "StrictHostKeyChecking=no",
+       "-o", "UserKnownHostsFile=/dev/null", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5",
+       f"{USER}@127.0.0.1"]
+
+
+def remote(cmd, check=True):
+    r = subprocess.run(ssh + [cmd], capture_output=True, text=True, timeout=60)
+    if check and r.returncode != 0:
+        print(r.stdout, r.stderr)
+        raise SystemExit(f"remote command failed: {cmd}")
+    return r.stdout
+
+
+deadline = time.time() + 600 * slow
+log = ""
+while time.time() < deadline:
+    r = subprocess.run(ssh + ["cat /var/log/testard-firstboot.log"], capture_output=True, text=True, timeout=60)
+    log = r.stdout
+    if "first boot setup finished" in log or "first boot setup failed" in log:
+        break
+    time.sleep(10)
+print(log)
+if "first boot setup finished" not in log:
+    sys.exit("first-boot setup didn't finish")
+
+step("Check the installed system")
+sudo = f"echo {PASSWORD} | sudo -S -p '' "
+checks = {
+    "hostname": ("cat /etc/hostname", HOST),
+    "root is locked": (sudo + "awk -F: '$1==\"root\" {print substr($2,1,1)}' /etc/shadow", "!"),
+    "ssh: no passwords": (sudo + "sshd -T | grep -i '^passwordauthentication'", "passwordauthentication no"),
+    "ssh: no root login": (sudo + "sshd -T | grep -i '^permitrootlogin'", "permitrootlogin no"),
+    "firewall loaded": (sudo + "nft list table inet testard", "tcp dport { 22, 80 }"),
+    "firewall at boot": ("ls /etc/runlevels/boot/", "testard-firewall"),
+    "daily updates": ("ls /etc/periodic/daily/", "testard-updates"),
+    "docker running": (sudo + "docker info --format '{{.ServerVersion}}'", "."),
+    "docker compose": ("docker compose version", "Docker Compose"),
+    "testard-setup installed": ("testard-setup --version", "testard-setup"),
+    "login screen": ("cat /etc/profile.d/testard-motd.sh", "testard"),
+    "first-boot files removed": ("ls /etc/local.d/ /etc/testard/", "setup.conf"),
+}
+failed = []
+for name, (cmd, expected) in checks.items():
+    out = remote(cmd, check=False)
+    ok = expected in out
+    if name == "first-boot files removed":
+        ok = ok and "firstboot" not in out
+    print(f"{'PASS' if ok else 'FAIL'}  {name}")
+    if not ok:
+        print("      got:", out.strip()[:300])
+        failed.append(name)
+
+# The firewall blocks a port that isn't open (81) but not one that is (80).
+remote(sudo + "sh -c 'cd /tmp && (nohup busybox httpd -f -p 80 >/dev/null 2>&1 &) && (nohup busybox httpd -f -p 81 >/dev/null 2>&1 &)'", check=False)
+time.sleep(2)
+for port, should_answer in ((8080, True), (8081, False)):
+    r = subprocess.run(["curl", "-s", "-m", "5", "-o", "/dev/null", "-w", "%{http_code}", f"http://127.0.0.1:{port}/"],
+                       capture_output=True, text=True)
+    answered = r.stdout not in ("", "000")
+    ok = answered == should_answer
+    print(f"{'PASS' if ok else 'FAIL'}  port {port - 8000} {'open' if should_answer else 'blocked'} (got {r.stdout or 'nothing'})")
+    if not ok:
+        failed.append(f"port {port - 8000}")
+
+# A password login over SSH must be refused.
+r = subprocess.run(["ssh", "-p", str(SSH_PORT), "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null",
+                    "-o", "BatchMode=yes", "-o", "PreferredAuthentications=password,keyboard-interactive",
+                    f"{USER}@127.0.0.1", "true"], capture_output=True, text=True, timeout=30)
+ok = r.returncode != 0 and "Permission denied" in r.stderr
+print(f"{'PASS' if ok else 'FAIL'}  password login refused")
+if not ok:
+    failed.append("password login refused")
+
+mem = remote("free -m | awk '/^Mem:/ {print $3}'", check=False).strip()
+print(f"\nMemory in use after boot, with Docker running: {mem} MB")
+
+vm.terminate(force=True)
+if failed:
+    sys.exit(f"\n{len(failed)} check(s) failed: {', '.join(failed)}")
+print("\nAll checks passed.")
