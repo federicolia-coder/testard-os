@@ -23,8 +23,16 @@ if ! ls ~/.abuild/*.rsa >/dev/null 2>&1; then
 	cp ~/.abuild/*.rsa.pub /etc/apk/keys/
 fi
 
-[ -d /tmp/aports ] || git clone --depth 1 --branch "$ALPINE-stable" \
-	https://gitlab.alpinelinux.org/alpine/aports.git /tmp/aports
+# Only the scripts/ folder of aports is needed. GitLab turns away CI
+# machines, so the official GitHub mirror comes first.
+if [ ! -d /tmp/aports ]; then
+	for url in https://github.com/alpinelinux/aports.git https://gitlab.alpinelinux.org/alpine/aports.git; do
+		rm -rf /tmp/aports
+		git clone --depth 1 --filter=blob:none --sparse --branch "$ALPINE-stable" "$url" /tmp/aports \
+			&& git -C /tmp/aports sparse-checkout set scripts && break
+	done
+	[ -f /tmp/aports/scripts/mkimage.sh ] || { echo "couldn't download aports" >&2; exit 1; }
+fi
 
 mkdir -p ~/.mkimage out
 cp iso/mkimg.testard.sh iso/genapkovl-testard.sh ~/.mkimage/
