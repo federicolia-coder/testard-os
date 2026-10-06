@@ -188,6 +188,11 @@ pkgs="nftables sudo curl ca-certificates tzdata openssh-server"
 # shellcheck disable=SC2086
 apk add --quiet $pkgs >> /var/log/testard-install.log 2>&1 || die "couldn't install packages (see /var/log/testard-install.log)"
 
+# sudo for the admin user right away, not only after first boot.
+mkdir -p /etc/sudoers.d
+printf '%%wheel ALL=(ALL:ALL) ALL\n' > /etc/sudoers.d/10-testard-wheel
+chmod 0440 /etc/sudoers.d/10-testard-wheel
+
 # What testard-setup finishes on first boot (it reads these choices).
 mkdir -p "$FIRSTBOOT"
 chmod 0700 "$FIRSTBOOT"
@@ -238,6 +243,7 @@ ADMIN=$(sed -n 's/^ADMIN=//p' /etc/testard/setup.conf)
 	if [ -f "$FB/agent-key" ]; then export TESTARD_AGENT_KEY="$(cat "$FB/agent-key")"; fi
 	if /usr/local/sbin/testard-setup --yes --user "$ADMIN" "$@"; then
 		rm -rf "$FB" /etc/local.d/testard-firstboot.start
+		: > /etc/motd
 		echo "== first boot setup finished"
 	else
 		echo "== first boot setup failed; it will run again at the next boot"
