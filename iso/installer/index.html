@@ -31,6 +31,10 @@
         <select id="kb"></select>
         <span class="hint">Changing it restarts this screen for a moment.</span>
       </div>
+      <div class="warn" id="already" hidden style="border-color:var(--signal);margin-bottom:28px">
+        <p><strong style="color:var(--signal)">Testard OS is already installed on <span id="already-disk"></span>.</strong> Remove the USB stick and restart to use it, or install again below.</p>
+        <div class="actions" style="margin-top:16px"><button class="primary" id="boot-disk">Restart from the disk</button></div>
+      </div>
       <p><span class="status" id="net">Checking the network…</span></p>
       <div class="actions">
         <button class="primary" data-next>Start</button>

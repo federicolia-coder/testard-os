@@ -1,8 +1,12 @@
 #!/bin/sh
-# Restarts the computer once the installation is done.
+# Restarts from the installed disk: once the installation is done, or when
+# Testard OS was already on a disk. Ejects the CD and, on UEFI, makes the
+# disk start first, so the installer doesn't come back.
 # shellcheck source=iso/installer/lib.sh
 . ../lib.sh
 require_post
-grep -qx 'done' "$RUN/state" 2>/dev/null || fail "409 Conflict" "the installation hasn't finished"
-( sleep 1; reboot ) >/dev/null 2>&1 &
+if ! grep -qx 'done' "$RUN/state" 2>/dev/null && ! "$INSTALL" --find-installed >/dev/null 2>&1; then
+	fail "409 Conflict" "Testard OS isn't installed yet"
+fi
+( sleep 1; "$INSTALL" --restart ) >/dev/null 2>&1 &
 reply "200 OK" '{"ok":true}'

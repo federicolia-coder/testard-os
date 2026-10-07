@@ -181,11 +181,28 @@ else:
         sys.exit("installer failed")
     vm.expect_exact(":~# ")
 
-step("Restart from the disk, without the installer")
-vm.sendline("poweroff")
-vm.expect(pexpect.EOF, timeout=120 * slow)
-vm = start(with_iso=False)
-vm.expect(f"{HOST} login:", timeout=300 * slow)
+if GUI:
+    # As a person would: the ISO stays in, and "Restart now" must bring up
+    # the installed system, not the installer again.
+    step("Restart from the disk with the ISO still in")
+    vm.sendline("efibootmgr | head -n 3; curl -s http://127.0.0.1:8080/cgi-bin/info | grep -o '\"installed\":\"[a-z0-9]*\"'")
+    i = vm.expect(['"installed":"vda"', r":~# "], timeout=60)
+    if i == 1:
+        sys.exit("the installer didn't find the installed system")
+    vm.expect_exact(":~# ")
+    vm.sendline("efibootmgr | grep -m1 BootOrder; efibootmgr | grep 'Testard OS'")
+    i = vm.expect(["Testard OS", r":~# "], timeout=30)
+    if i == 1:
+        sys.exit("no UEFI boot entry for the installed disk")
+    vm.expect_exact(":~# ")
+    vm.sendline("curl -s -X POST -d now=1 http://127.0.0.1:8080/cgi-bin/reboot; echo")
+    vm.expect(f"{HOST} login:", timeout=300 * slow)
+else:
+    step("Restart from the disk, without the installer")
+    vm.sendline("poweroff")
+    vm.expect(pexpect.EOF, timeout=120 * slow)
+    vm = start(with_iso=False)
+    vm.expect(f"{HOST} login:", timeout=300 * slow)
 
 # First boot runs testard-setup in the background; wait for it over SSH.
 step("Wait for the first-boot setup")

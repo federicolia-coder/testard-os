@@ -5,6 +5,9 @@
 #   testard-install --answers FILE   take the answers from FILE (the
 #                                    graphical installer writes it)
 #   testard-install --list-disks     print the disks it can install on
+#   testard-install --find-installed print the disk Testard OS is already on
+#   testard-install --restart        restart from the disk: eject the CD,
+#                                    boot the disk next (UEFI), reboot
 #
 # It sets up the live system with Alpine's own tools (setup-alpine,
 # setup-disk), copies it to the disk, and leaves the rest of the setup (SSH,
@@ -23,8 +26,8 @@ ANSWERS=""
 
 case "${1:-}" in
 	--answers) ANSWERS="${2:?--answers needs a file}" ;;
-	--list-disks|"") ;;
-	*) echo "usage: testard-install [--answers FILE | --list-disks]" >&2; exit 2 ;;
+	--list-disks|--find-installed|--restart|"") ;;
+	*) echo "usage: testard-install [--answers FILE | --list-disks | --find-installed | --restart]" >&2; exit 2 ;;
 esac
 
 # Progress for the graphical installer: "running|percent|text", "done" or
@@ -74,7 +77,59 @@ list_disks() { # one line per disk: name size-in-GB model
 	done
 }
 
-if [ "${1:-}" = --list-disks ]; then list_disks; exit 0; fi
+# A disk that already has Testard OS on it: its root partition holds
+# /etc/testard/setup.conf. Mounted read-only, just to look.
+find_installed() {
+	mnt=$(mktemp -d)
+	for n in $(list_disks | awk '{print $1}'); do
+		for p in /sys/block/"$n"/"$n"*; do
+			[ -e "$p/partition" ] || continue
+			part=$(basename "$p")
+			if mount -o ro "/dev/$part" "$mnt" 2>/dev/null; then
+				found=""
+				[ -f "$mnt/etc/testard/setup.conf" ] && found=1
+				umount "$mnt"
+				if [ -n "$found" ]; then rmdir "$mnt"; echo "$n"; return 0; fi
+			fi
+		done
+	done
+	rmdir "$mnt"
+	return 1
+}
+
+# UEFI: an entry for the installed disk, first in the boot order, so the
+# machine starts from the disk even if the USB stick or ISO is still in.
+# (setup-disk installs GRUB with --no-nvram, so there's no entry otherwise.)
+add_uefi_entry() { # add_uefi_entry DISK
+	[ -d /sys/firmware/efi ] || return 0
+	mountpoint -q /sys/firmware/efi/efivars 2>/dev/null || mount -t efivarfs efivarfs /sys/firmware/efi/efivars 2>/dev/null || true
+	command -v efibootmgr >/dev/null 2>&1 || apk add --quiet efibootmgr >/dev/null 2>&1 || return 0
+	for p in /sys/block/"$1"/"$1"*; do
+		[ -e "$p/partition" ] || continue
+		part=$(basename "$p")
+		blkid "/dev/$part" 2>/dev/null | grep -q 'TYPE="vfat"' || continue
+		# Replace an older entry of ours rather than piling them up.
+		efibootmgr 2>/dev/null | sed -n 's/^Boot\([0-9A-Fa-f]\{4\}\)\*\{0,1\} Testard OS.*/\1/p' | while read -r num; do
+			efibootmgr -q -b "$num" -B >/dev/null 2>&1 || true
+		done
+		efibootmgr -q -c -d "/dev/$1" -p "$(cat "$p/partition")" -L "Testard OS" -l '\EFI\alpine\grubx64.efi' >/dev/null 2>&1 || true
+		return 0
+	done
+}
+
+restart_from_disk() {
+	disk=$(find_installed || true)
+	[ -z "$disk" ] || add_uefi_entry "$disk"
+	for d in /dev/sr*; do [ -e "$d" ] && eject "$d" >/dev/null 2>&1; done
+	sync
+	reboot
+}
+
+case "${1:-}" in
+	--list-disks) list_disks; exit 0 ;;
+	--find-installed) find_installed; exit $? ;;
+	--restart) restart_from_disk; exit 0 ;;
+esac
 
 # ── Answers ──────────────────────────────────────────────────────────────
 
@@ -387,6 +442,8 @@ progress 55 "Copying Testard OS to $DISK"
 ERASE_DISKS="/dev/$DISK" setup-disk -o "$ovl" -m sys "/dev/$DISK" >> "$LOG" 2>&1 \
 	|| die "couldn't install to $DISK (see $LOG)"
 rm -f "$ovl"
+progress 95 "Making the disk start first"
+add_uefi_entry "$DISK" >> "$LOG" 2>&1
 
 mkdir -p /run/testard
 finished=1
@@ -394,7 +451,7 @@ echo 'done' > "$STATE"
 if [ -z "$ANSWERS" ]; then
 	echo
 	say "${B}Done.${R} Testard OS is installed on $DISK."
-	say "Remove the USB stick, then restart with: reboot"
+	say "Remove the USB stick, then restart with: testard-install --restart"
 	say "After the restart, log in as $ADMIN. The first boot finishes the setup in about a minute."
 else
 	say "Testard OS is installed on $DISK."

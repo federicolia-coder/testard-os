@@ -209,6 +209,10 @@ async function init() {
     $("#net").textContent = "No network: connect a cable for SSH keys from GitHub and updates. Installing works without it.";
     $("#net").classList.add("off");
   }
+  if (info.installed) {
+    $("#already").hidden = false;
+    $("#already-disk").textContent = info.installed;
+  }
   applyModeDefaults();
   start.disabled = false;
 }
@@ -234,7 +238,7 @@ document.addEventListener("click", async (e) => {
       $("#install-error").textContent = err.message;
       t.disabled = false;
     }
-  } else if (t.id === "reboot") {
+  } else if (t.id === "reboot" || t.id === "boot-disk") {
     t.disabled = true;
     t.textContent = "Restarting…";
     api("reboot", { now: "1" }).catch(() => {});

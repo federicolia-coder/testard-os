@@ -12,6 +12,7 @@ zones=$( { echo UTC; cd /usr/share/zoneinfo 2>/dev/null && find Africa America A
 
 ip=$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for (i=1;i<NF;i++) if ($i=="src") {print $(i+1); exit}}')
 kb=$(cat "$RUN/xkb" 2>/dev/null || echo us)
+installed=$("$INSTALL" --find-installed 2>/dev/null || true)
 version=$(sed -n 's/^VERSION="\(.*\)"$/\1/p' /etc/testard/testard-setup 2>/dev/null)
 
-reply "200 OK" "{\"version\":\"$(json_str "$version")\",\"keyboard\":\"$(json_str "$kb")\",\"ip\":\"$(json_str "$ip")\",\"disks\":[${disks%,}],\"timezones\":[${zones%,}]}"
+reply "200 OK" "{\"version\":\"$(json_str "$version")\",\"keyboard\":\"$(json_str "$kb")\",\"ip\":\"$(json_str "$ip")\",\"installed\":\"$(json_str "$installed")\",\"disks\":[${disks%,}],\"timezones\":[${zones%,}]}"
